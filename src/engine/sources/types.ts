@@ -33,4 +33,9 @@ export interface LineSource {
   /** Lines that were queued but never played (the player cut in). */
   discard?(lines: Line[]): void
   reset?(): void
+  /** "live" or "drill", so a saved session reopens on the same kind of source. */
+  readonly kind?: string
+  /** State to save with the session. `upcoming` are queued lines that never aired. */
+  snapshot?(upcoming: Line[]): unknown
+  restore?(data: unknown): void
 }

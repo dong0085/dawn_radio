@@ -1,4 +1,4 @@
-import { LIMITS } from '../shared/api.ts'
+import { LIMITS, TTS_STREAM_SAMPLE_RATE } from '../shared/api.ts'
 import { json } from './http.ts'
 
 /**
@@ -11,8 +11,6 @@ import { json } from './http.ts'
  *                         -> newline-delimited JSON chunks: audio_base64 (16-bit PCM) + alignment
  */
 
-/** Sample rate of the streamed PCM audio. */
-export const STREAM_SAMPLE_RATE = 24000
 
 export interface TtsEnv {
   ELEVENLABS_API_KEY?: string
@@ -21,6 +19,8 @@ export interface TtsEnv {
 }
 
 interface TtsBody {
+  /** How to perform the line, e.g. "urgent". Sent as a [tag] on models that support them. */
+  delivery?: string
   text?: string
   voiceId?: string
   languageCode?: string
@@ -47,7 +47,9 @@ export async function handleTts(request: Request, env: TtsEnv, { stream = false 
   if (text.length > MAX_CHARS) return json({ error: `text is longer than ${MAX_CHARS} characters` }, 400)
 
   const model = env.ELEVENLABS_MODEL_ID || 'eleven_v4'
-  const payload: Record<string, unknown> = { text, model_id: model }
+  // Expressive models (v3, v4) perform [tags]; older models would read them aloud.
+  const tag = body.delivery && /^[a-z ]{2,20}$/.test(body.delivery) && /eleven_v[34]/.test(model) ? `[${body.delivery}] ` : ''
+  const payload: Record<string, unknown> = { text: tag + text, model_id: model }
   // Only some models accept a forced language.
   if (body.languageCode && /flash|turbo/.test(model)) payload.language_code = body.languageCode
   if (body.speed && body.speed !== 1) {
@@ -55,7 +57,7 @@ export async function handleTts(request: Request, env: TtsEnv, { stream = false 
   }
 
   const url = stream
-    ? `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream/with-timestamps?output_format=pcm_${STREAM_SAMPLE_RATE}`
+    ? `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream/with-timestamps?output_format=pcm_${TTS_STREAM_SAMPLE_RATE}`
     : `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps?output_format=mp3_44100_128`
   const upstream = await fetch(url, {
       method: 'POST',

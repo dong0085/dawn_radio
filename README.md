@@ -2,9 +2,12 @@
 
 A live radio drama for language learners. Two AI parties talk over a walkie-talkie channel, and the player listens, pauses, or holds push-to-talk to join in. Every line shows bilingual subtitles with word-by-word highlighting.
 
-- **Live feed:** Claude writes the dialogue as you listen, a few lines at a time, and reacts to what you say on the radio.
-- **Voices:** ElevenLabs, with word timings for the highlight.
-- **Your voice:** ElevenLabs Scribe turns push-to-talk audio into text (any language, or a mix).
+- **Live feed:** Claude writes the dialogue as you listen, 4 lines at a time, streamed line by line. It reacts to what you say, quietly repeats your message back in correct French, keeps the field log up to date, and steers toward an ending.
+- **Voices:** ElevenLabs, streamed, with word timings for the highlight. Only the next line is prepared ahead, so cutting in wastes at most one line. Delivery cues like `[urgent]` shape the performance.
+- **Your voice:** ElevenLabs Scribe turns push-to-talk audio into text (any language, or a mix). DeepL then shows your message in both languages.
+- **Tap a word** in the subtitle to pause and see what it means there (DeepL, using the sentence as context).
+- **Each side sounds different:** cave drips and a weaker signal for the team inside, room hum for control. Weak signals hiss and briefly drop out.
+- **Saved as you go:** reload or come back later and the channel waits on standby with a Resume button.
 - **Drill feed:** a fixed French/English cave rescue, used when no Claude key is set (or chosen in Settings → Feed).
 
 ## Run locally
@@ -20,9 +23,23 @@ Copy `.env.example` to `.env.local` and add your keys:
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Live feed (Claude writes the dialogue) |
 | `ELEVENLABS_API_KEY` | ElevenLabs voices and speech-to-text |
-| `APP_ACCESS_CODE` | Optional. Players must enter this code in Settings before the API answers. Use it on a public URL. |
+| `DEEPL_API_KEY` | Word lookups and translating your messages. Free keys (ending `:fx`) work. |
 
-Optional: `CLAUDE_MODEL` (default `claude-opus-5-5`), `CLAUDE_EFFORT` (default `low`, the fastest), `ELEVENLABS_MODEL_ID` (default `eleven_multilingual_v2`), `ELEVENLABS_STT_MODEL` (default `scribe_v1`).
+Optional:
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | `claude-sonnet-5-5` replies faster (see below) |
+| `CLAUDE_EFFORT` | `low` | Lower is faster |
+| `CLAUDE_THINKING` | on | `off` turns thinking off on Claude Sonnet 5.5, for the fastest first line |
+| `ELEVENLABS_MODEL_ID` | `eleven_v4` | `eleven_v4_turbo` is faster; `eleven_multilingual_v2` ignores delivery cues |
+| `ELEVENLABS_STT_MODEL` | `scribe_v1` | |
+
+**Reply speed.** The wait after you speak is mostly Claude writing its first line. Measured on the same request: Claude Opus 5.5 takes about 4–12 s to its first line (its thinking can't be turned off); Claude Sonnet 5.5 with `CLAUDE_THINKING=off` takes about 6 s. Voice adds about 0.7 s.
+
+**Ambience files.** The cave, room and rain sounds are generated in the browser. To use recorded ones instead, run `node --env-file=.env scripts/make-sfx.mjs` once (needs the *sound generation* permission on the ElevenLabs key); it writes `public/sfx/*.mp3`, which the app picks up automatically.
+
+**Spending.** Each visitor is limited per minute on every API route (`server/rateLimit.ts`). For a public URL, also set a monthly spend limit in the Anthropic, ElevenLabs and DeepL dashboards; those are the only hard caps.
 
 With no keys, the app still runs: drill feed, the browser's built-in voice, and the browser's speech recognition. `/api/config` shows what is set up.
 
@@ -55,7 +72,7 @@ One-time setup in the Cloudflare dashboard: **Workers & Pages → Create → Pag
 | Build command | `pnpm build` |
 | Build output directory | `dist` |
 
-Add the keys as encrypted environment variables, in the setup screen or later in the project settings: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, and `APP_ACCESS_CODE` (recommended). You can also set them from the terminal:
+Add the keys as encrypted environment variables, in the setup screen or later in the project settings: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY` and `DEEPL_API_KEY`. You can also set them from the terminal:
 
 ```bash
 pnpm exec wrangler login                                                  # once, opens the browser
@@ -72,10 +89,12 @@ New secret values take effect on the next deploy (a push, or **Retry deployment*
 src/
   scenarios/          scenario data (parties, colors, voices, script)
   engine/
-    conversation.ts   controller: batches, prefetch, pause, replay, push-to-talk
+    conversation.ts   controller: streamed batches, one-line-ahead voices, pause, replay, push-to-talk
     sources/          where lines come from: ai.ts (Claude), scripted.ts (drill), auto.ts (picks one)
-    speech/           voices: ElevenLabs (with timings) and browser fallback
-    radioAudio.ts     radio sound: band-pass, distortion, hiss, squelch, beeps
+    speech/           voices: ElevenLabs (stream.ts plays audio as it arrives) and browser fallback
+    radioAudio.ts     radio sound: band-pass, distortion, hiss, squelch, beeps, signal dropouts
+    ambience.ts       background sound at each end (generated, or recorded files)
+    session.ts        keeps the transcript, log and story memory across reloads
     words.ts          word timings, ElevenLabs alignment, subtitle paging
     transcriber.ts    speech-to-text for the player (Scribe, or the browser recognizer)
   components/
@@ -89,10 +108,13 @@ shared/
   stories.ts          story bibles the AI writes from (premise, characters, events, endings)
   api.ts              request/response shapes and limits
 server/               /api routes, shared by the dev server and Cloudflare
-  router.ts           /api/config, access code check, routing
+  router.ts           /api/config, rate limits, routing
   dialogue.ts         Claude: next lines, translations, log updates, story memory
-  tts.ts, stt.ts      ElevenLabs voices and Scribe
+  tts.ts, stt.ts      ElevenLabs voices (whole or streamed) and Scribe
+  translate.ts        DeepL
+  rateLimit.ts        per-visitor limits
 functions/api/[[route]].ts   Cloudflare Pages Function entry
+scripts/make-sfx.mjs  one-off: recorded ambience with the ElevenLabs Sound Effects API
 ```
 
 ### Customizing

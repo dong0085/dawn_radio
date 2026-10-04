@@ -32,6 +32,7 @@ export const caveRescue: ScriptedScenario = {
         name: 'Rescue Team',
         side: 'left',
         color: RESCUE,
+        radio: { ambience: { kind: 'cave', src: '/sfx/cave.mp3', gain: 0.18 }, signal: 0.75 },
         voice: {
           elevenLabsVoiceId: 'JBFqnCBsd6RMkjVDRZzb',
           browserVoiceNames: ['Thomas', 'Paul', 'Henri', 'Google français'],
@@ -43,6 +44,7 @@ export const caveRescue: ScriptedScenario = {
         name: 'Mission Control',
         side: 'right',
         color: CONTROL,
+        radio: { ambience: { kind: 'room', src: '/sfx/control-room.mp3', gain: 0.12 }, signal: 1 },
         voice: {
           elevenLabsVoiceId: 'EXAVITQu4vr4xnSDxMaL',
           browserVoiceNames: ['Amélie', 'Audrey', 'Marie', 'Denise', 'Google français'],

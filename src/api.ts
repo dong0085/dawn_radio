@@ -1,11 +1,12 @@
-import type { ApiConfig, DialogueDone, DialogueEvent, DialogueLine, DialogueRequest, SttResponse } from '../shared/api.ts'
-
-let accessCode = ''
-
-/** Code sent with every API call when the server requires one (see APP_ACCESS_CODE). */
-export function setAccessCode(code: string) {
-  accessCode = code.trim()
-}
+import type {
+  ApiConfig,
+  DialogueDone,
+  DialogueEvent,
+  DialogueLine,
+  DialogueRequest,
+  SttResponse,
+  TranslateResponse,
+} from '../shared/api.ts'
 
 export class ApiError extends Error {
   status: number
@@ -15,11 +16,9 @@ export class ApiError extends Error {
   }
 }
 
-/** fetch() for our /api routes: adds the access code and turns errors into ApiError. */
+/** fetch() for our /api routes: turns errors into ApiError. */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(init.headers)
-  if (accessCode) headers.set('x-access-code', accessCode)
-  const res = await fetch(`/api${path}`, { ...init, headers })
+  const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
     let message = res.statusText
     try {
@@ -33,7 +32,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   return res
 }
 
-const offline: ApiConfig = { dialogue: false, tts: false, stt: false, accessCode: false }
+const offline: ApiConfig = { dialogue: false, tts: false, stt: false, translate: false }
 let configPromise: Promise<ApiConfig> | null = null
 
 /** What the server has set up. Fetched once; offline defaults if the API is missing. */
@@ -85,6 +84,26 @@ export async function readNdjson<T>(res: Response, onEvent: (event: T) => void) 
     if (done) break
   }
   if (buf.trim()) onEvent(JSON.parse(buf) as T)
+}
+
+const translations = new Map<string, Promise<string[]>>()
+
+/** DeepL translation (cached). `context` helps translate a single word in its sentence. */
+export function translate(text: string[], target: string, opts: { source?: string; context?: string } = {}): Promise<string[]> {
+  const key = JSON.stringify([text, target, opts.source, opts.context])
+  let p = translations.get(key)
+  if (!p) {
+    p = apiFetch('/translate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, target, ...opts }),
+    })
+      .then((r) => r.json() as Promise<TranslateResponse>)
+      .then((d) => d.translations.map((t) => t.text))
+    translations.set(key, p)
+    p.catch(() => translations.delete(key))
+  }
+  return p
 }
 
 export async function transcribe(audio: Blob): Promise<SttResponse> {

@@ -103,3 +103,44 @@ export function MessageView({ eyebrow, title, body, actions, tone }: MessageView
     </motion.div>
   )
 }
+
+export interface WordCardProps {
+  word: string
+  /** Translation of the word in context; undefined while loading. */
+  translation?: string
+  /** Shown under the word, e.g. the sentence translation when no word lookup is available. */
+  note?: string
+  lang?: string
+  loadingText?: string
+  closeLabel?: string
+  onClose: () => void
+}
+
+/** Card for a tapped word: the word and what it means here. */
+export function WordCard({ word, translation, note, lang, loadingText = 'Looking up…', closeLabel = 'Continue', onClose }: WordCardProps) {
+  return (
+    <motion.div
+      className="word-card"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      transition={{ duration: 0.16 }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="word-card__text">
+        <span className="word-card__word" lang={lang}>
+          {word}
+        </span>
+        {translation !== undefined || note ? (
+          translation && <span className="word-card__meaning">{translation}</span>
+        ) : (
+          <span className="word-card__meaning is-loading">{loadingText}</span>
+        )}
+        {note && <span className="word-card__note">{note}</span>}
+      </div>
+      <button type="button" className="chip chip--primary" onClick={onClose}>
+        {closeLabel}
+      </button>
+    </motion.div>
+  )
+}

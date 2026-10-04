@@ -1,3 +1,13 @@
+import { loadAmbience, type AmbienceSpec } from './ambience'
+
+/** What the channel sounds like for one transmission. */
+export interface CarrierOptions {
+  /** Background sound at the speaker's end, heard through their radio. */
+  ambience?: AmbienceSpec
+  /** Signal strength, 0 (barely there) to 1 (clear). Weak signals hiss more and drop out. */
+  signal?: number
+}
+
 export interface RadioAudioOptions {
   /** Lowest voice frequency kept by the radio filter (Hz). */
   bandLow?: number
@@ -36,6 +46,12 @@ export class RadioAudio {
   private buf = new Float32Array(1024)
   private opts: Required<RadioAudioOptions>
   private staticLevel = 1
+  private voiceGate!: GainNode
+  private ambienceCache = new Map<string, Promise<AudioBuffer | null>>()
+  private ambienceSource: { src: AudioBufferSourceNode; gain: GainNode } | null = null
+  private dropoutTimer: ReturnType<typeof setTimeout> | undefined
+  /** Bumped on every carrier change, so late-loading ambience doesn't start after the line ended. */
+  private carrierId = 0
   private volume = 1
 
   constructor(options: RadioAudioOptions = {}) {
@@ -68,20 +84,47 @@ export class RadioAudio {
     this.staticLevel = v
   }
 
-  /** Squelch opens: short burst, then low hiss under the voice. */
-  carrierOn() {
+  /** Squelch opens: short burst, then low hiss under the voice (more when the signal is weak). */
+  carrierOn({ ambience, signal = 1 }: CarrierOptions = {}) {
     const ctx = this.ensure()
+    const id = ++this.carrierId
+    const weak = 1 - Math.max(0, Math.min(1, signal))
     const g = this.noiseGain.gain
     const t = ctx.currentTime
     g.cancelScheduledValues(t)
     g.setValueAtTime(this.opts.burst * this.staticLevel, t)
-    g.linearRampToValueAtTime(this.opts.hiss * this.staticLevel, t + 0.09)
+    g.linearRampToValueAtTime(this.opts.hiss * (1 + weak * 3) * this.staticLevel, t + 0.09)
     this.click(t)
+    this.voiceGate.gain.cancelScheduledValues(t)
+    this.voiceGate.gain.setValueAtTime(1, t)
+
+    if (ambience && ambience.kind !== 'none') {
+      this.ambience(ambience).then((buffer) => {
+        if (!buffer || id !== this.carrierId) return
+        this.stopAmbience()
+        const src = ctx.createBufferSource()
+        src.buffer = buffer
+        src.loop = true
+        const gain = ctx.createGain()
+        gain.gain.setValueAtTime(0, ctx.currentTime)
+        gain.gain.linearRampToValueAtTime(ambience.gain ?? 0.15, ctx.currentTime + 0.15)
+        // Through the radio chain: it's picked up by the speaker's microphone.
+        src.connect(gain).connect(this.voiceIn)
+        src.start(0, Math.random() * buffer.duration)
+        this.ambienceSource = { src, gain }
+      })
+    }
+    if (weak > 0.45) this.scheduleDropouts(weak)
   }
 
   /** Squelch closes: the classic "kssh" tail, then silence. */
   carrierOff() {
+    this.carrierId++
+    clearTimeout(this.dropoutTimer)
+    this.stopAmbience()
     const ctx = this.ensure()
+    this.voiceGate.gain.cancelScheduledValues(ctx.currentTime)
+    this.voiceGate.gain.setValueAtTime(1, ctx.currentTime)
     const g = this.noiseGain.gain
     const t = ctx.currentTime
     g.cancelScheduledValues(t)
@@ -128,6 +171,50 @@ export class RadioAudio {
     return this.micAnalyser ? rms(this.micAnalyser, this.buf) : 0
   }
 
+  private ambience(spec: AmbienceSpec) {
+    const key = `${spec.kind}|${spec.src ?? ''}`
+    let p = this.ambienceCache.get(key)
+    if (!p) {
+      p = loadAmbience(this.ensure(), spec).catch(() => null)
+      this.ambienceCache.set(key, p)
+    }
+    return p
+  }
+
+  private stopAmbience() {
+    const a = this.ambienceSource
+    this.ambienceSource = null
+    if (!a || !this.ctx) return
+    const t = this.ctx.currentTime
+    a.gain.gain.cancelScheduledValues(t)
+    a.gain.gain.setValueAtTime(a.gain.gain.value, t)
+    a.gain.gain.linearRampToValueAtTime(0, t + 0.08)
+    a.src.stop(t + 0.1)
+  }
+
+  /** A weak signal briefly cuts out now and then, with a crackle. Kept short so words stay clear. */
+  private scheduleDropouts(weak: number) {
+    clearTimeout(this.dropoutTimer)
+    const id = this.carrierId
+    const tick = () => {
+      if (id !== this.carrierId || !this.ctx) return
+      if (Math.random() < weak * 0.6) {
+        const t = this.ctx.currentTime
+        const len = 0.05 + Math.random() * 0.1 * weak
+        const gate = this.voiceGate.gain
+        gate.setValueAtTime(1, t)
+        gate.linearRampToValueAtTime(0.08, t + 0.01)
+        gate.setValueAtTime(0.08, t + len)
+        gate.linearRampToValueAtTime(1, t + len + 0.02)
+        const n = this.noiseGain.gain
+        n.setValueAtTime(this.opts.burst * 0.9 * this.staticLevel, t)
+        n.linearRampToValueAtTime(this.opts.hiss * (1 + weak * 3) * this.staticLevel, t + len + 0.03)
+      }
+      this.dropoutTimer = setTimeout(tick, 1200 + Math.random() * 1600)
+    }
+    this.dropoutTimer = setTimeout(tick, 600 + Math.random() * 1000)
+  }
+
   private click(t: number) {
     const ctx = this.ctx!
     const osc = ctx.createOscillator()
@@ -168,9 +255,11 @@ export class RadioAudio {
     makeup.gain.value = 1.4
     this.analyser = ctx.createAnalyser()
     this.analyser.fftSize = 1024
-    this.voiceIn.connect(hp).connect(lp).connect(presence).connect(shaper).connect(comp).connect(makeup)
-    makeup.connect(this.analyser)
-    makeup.connect(this.master)
+    // Gate for signal dropouts.
+    this.voiceGate = ctx.createGain()
+    this.voiceIn.connect(hp).connect(lp).connect(presence).connect(shaper).connect(comp).connect(makeup).connect(this.voiceGate)
+    this.voiceGate.connect(this.analyser)
+    this.voiceGate.connect(this.master)
 
     // Static
     const noise = ctx.createBufferSource()

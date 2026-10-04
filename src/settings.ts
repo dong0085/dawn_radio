@@ -18,8 +18,6 @@ export interface Settings {
   micLanguage: 'target' | 'native'
   /** live: lines written as you listen (needs the server) · drill: the fixed training recording. */
   feed: 'live' | 'drill'
-  /** Sent with API calls when the server asks for one. */
-  accessCode: string
 }
 
 export const defaultSettings: Settings = {
@@ -32,7 +30,6 @@ export const defaultSettings: Settings = {
   inputMode: 'voice',
   micLanguage: 'target',
   feed: 'live',
-  accessCode: '',
 }
 
 const KEY = 'radio.settings.v1'

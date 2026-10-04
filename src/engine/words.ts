@@ -47,24 +47,44 @@ export function estimateWords(segments: Segment[], options: EstimateOptions = {}
   })
 }
 
+/**
+ * Word time spans from per-character timing, in spoken order.
+ * Skips voice [tags] and joins lone punctuation like tokenize() does, so spans line up with words.
+ * With final = false (still streaming), the last word is left out until a space follows it.
+ */
+export function spansFromChars(chars: string[], starts: number[], ends: number[], final = true): [number, number][] {
+  const spans: [number, number][] = []
+  let open = -1
+  let inTag = false
+  const close = (i: number) => {
+    const text = chars.slice(open, i).join('')
+    if (spans.length && isLonePunct(text)) spans[spans.length - 1][1] = ends[i - 1]
+    else spans.push([starts[open], ends[i - 1]])
+    open = -1
+  }
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i]
+    if (inTag) {
+      if (c === ']') inTag = false
+      continue
+    }
+    if (c === '[' && open < 0) {
+      inTag = true
+      continue
+    }
+    const isSpace = /\s/.test(c)
+    if (!isSpace && open < 0) open = i
+    else if (isSpace && open >= 0) close(i)
+  }
+  if (open >= 0 && final) close(chars.length)
+  return spans
+}
+
 /** Turn per-character timing into per-word timing. */
 export function wordsFromAlignment(segments: Segment[], alignment: CharAlignment): TimedWord[] {
   const tokens = tokenize(segments)
   const { characters: chars, character_start_times_seconds: starts, character_end_times_seconds: ends } = alignment
-
-  const spans: [number, number][] = []
-  let open = -1
-  for (let i = 0; i <= chars.length; i++) {
-    const isSpace = i === chars.length || /\s/.test(chars[i])
-    if (!isSpace && open < 0) open = i
-    if (isSpace && open >= 0) {
-      const text = chars.slice(open, i).join('')
-      // Same merge rule as tokenize(), so counts line up.
-      if (spans.length && isLonePunct(text)) spans[spans.length - 1][1] = ends[i - 1]
-      else spans.push([starts[open], ends[i - 1]])
-      open = -1
-    }
-  }
+  const spans = spansFromChars(chars, starts, ends)
 
   if (spans.length === tokens.length) {
     return tokens.map((w, i) => ({ ...w, start: spans[i][0], end: spans[i][1] }))

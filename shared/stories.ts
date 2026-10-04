@@ -13,6 +13,8 @@ export interface StoryParty {
   role: string
   /** How they talk. */
   voice: string
+  /** What they're called on the radio, in the target language. */
+  callSign: string
 }
 
 export interface StoryBible {
@@ -55,16 +57,18 @@ export const caveRescueBible: StoryBible = {
       name: 'Rescue Team',
       role: 'Léa, team leader, inside the cave with her partner Karim. Experienced, practical, sometimes out of breath.',
       voice: 'Short, physical sentences. Describes what she sees, hears and feels. Calm under pressure, honest when scared.',
+      callSign: 'Équipe de secours',
     },
     {
       id: 'control',
       name: 'Mission Control',
       role: 'Marc, the coordinator at the surface. Has the cave map, the weather radar and contact with the medics.',
       voice: 'Clear, structured, reassuring. Gives instructions, asks precise questions, tracks time.',
+      callSign: 'Contrôle',
     },
   ],
   playerRole:
-    'an observer on the same channel (call sign "Observer"), a volunteer at the surface who knows this cave well and can see the weather radar. Both parties can hear the player and treat them as a helpful outsider.',
+    'an observer on the same channel (call sign "Observateur"), a volunteer at the surface who knows this cave well and can see the weather radar. Both parties can hear the player and treat them as a helpful outsider.',
   beats: [
     'The team reaches the second gallery; the air is cold and wet.',
     'They find signs of Julien: footprints, an abandoned rope, a dropped glove.',

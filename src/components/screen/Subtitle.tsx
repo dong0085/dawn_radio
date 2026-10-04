@@ -19,6 +19,10 @@ export interface SubtitleProps {
   translationHint?: string
   /** Language tag of the target text. */
   lang?: string
+  /** Tap a word (e.g. to look it up). Leave out to make words plain text. */
+  onWordTap?: (word: TimedWord, index: number) => void
+  /** Index of the word that is looked up, to mark it. */
+  selectedWord?: number
 }
 
 /** Target-language line with word-by-word highlight, and its translation underneath. */
@@ -34,6 +38,8 @@ export function Subtitle({
   onRevealTranslation,
   translationHint = 'Tap to translate',
   lang,
+  onWordTap,
+  selectedWord,
 }: SubtitleProps) {
   const pages = useMemo(() => paginate(segments, maxChars), [segments, maxChars])
 
@@ -69,8 +75,16 @@ export function Subtitle({
                 return (
                   <span
                     key={w.i}
-                    className={`word word--${state}`}
+                    className={`word word--${state}${onWordTap ? ' word--tappable' : ''}${w.i === selectedWord ? ' is-selected' : ''}`}
                     style={state === 'current' && color ? { textShadow: `0 0 12px ${color}` } : undefined}
+                    onClick={
+                      onWordTap
+                        ? (e) => {
+                            e.stopPropagation()
+                            onWordTap(w, w.i)
+                          }
+                        : undefined
+                    }
                   >
                     {w.text}{' '}
                   </span>

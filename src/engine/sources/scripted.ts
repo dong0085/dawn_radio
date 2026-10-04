@@ -17,11 +17,13 @@ export interface ScriptedSourceOptions {
   latency?: [number, number]
 }
 
-let lineCounter = 0
+// Unique across reloads, so saved transcript ids never collide with new ones.
+let lineCounter = Date.now()
 const makeLine = (l: ScriptLine): Line => ({ ...l, id: `l${++lineCounter}` })
 
 /** Plays a fixed script in batches, with canned reactions to the player. */
 export class ScriptedSource implements LineSource {
+  readonly kind = 'drill'
   private cursor = 0
   private reactionIndex = 0
   private pushedBack: Line[] = []
@@ -65,6 +67,19 @@ export class ScriptedSource implements LineSource {
   reset() {
     this.cursor = 0
     this.reactionIndex = 0
+    this.pushedBack = []
+  }
+
+  snapshot(upcoming: Line[]) {
+    // Lines handed out but never heard come back when the session resumes.
+    const unheard = this.pushedBack.length + upcoming.filter((l) => !this.isReaction(l)).length
+    return { cursor: Math.max(0, this.cursor - unheard), reactionIndex: this.reactionIndex }
+  }
+
+  restore(data: unknown) {
+    const d = data as { cursor?: number; reactionIndex?: number } | undefined
+    this.cursor = Math.min(this.data.script.length, Math.max(0, d?.cursor ?? 0))
+    this.reactionIndex = d?.reactionIndex ?? 0
     this.pushedBack = []
   }
 

@@ -1,3 +1,4 @@
+import type { AmbienceSpec } from './engine/ambience'
 /** The player is always the third participant on the channel. */
 export const PLAYER_ID = 'player'
 
@@ -20,6 +21,15 @@ export interface Party {
   /** Light and label color. Any CSS color. */
   color: string
   voice: PartyVoice
+  /** How this side sounds on the channel. */
+  radio?: PartyRadio
+}
+
+export interface PartyRadio {
+  /** Background sound at their end, heard through their radio. */
+  ambience?: AmbienceSpec
+  /** Usual signal strength, 0 (barely there) to 1 (clear). A line can override it. */
+  signal?: number
 }
 
 export interface PlayerConfig {
@@ -40,6 +50,8 @@ export interface Line {
   segments: Segment[]
   /** How the line is performed, e.g. "urgent". Sent to the voice as a [tag], never shown. */
   delivery?: string
+  /** Signal strength for this transmission, 0–1 (defaults to the party's). */
+  signal?: number
   /** Changes to the log, applied when this line starts playing. */
   log?: LogUpdate
 }

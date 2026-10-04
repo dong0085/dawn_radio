@@ -7,6 +7,8 @@ import type { Batch, BatchRequest, LineSource, NextOptions } from './types'
  */
 export class AutoSource implements LineSource {
   private current: LineSource | null = null
+  /** Saved state waiting for the source to be chosen. */
+  private saved: { kind?: string; data?: unknown } | null = null
   private choosing: Promise<LineSource> | null = null
   private choose: () => Promise<LineSource>
 
@@ -15,7 +17,12 @@ export class AutoSource implements LineSource {
   }
 
   private get source() {
-    this.choosing ??= this.choose().then((s) => (this.current = s))
+    this.choosing ??= this.choose().then((s) => {
+      // Only restore into the same kind of source it was saved from.
+      if (this.saved && this.saved.kind === s.kind) s.restore?.(this.saved.data)
+      this.saved = null
+      return (this.current = s)
+    })
     return this.choosing
   }
 
@@ -31,5 +38,15 @@ export class AutoSource implements LineSource {
     this.current?.reset?.()
     this.current = null
     this.choosing = null
+    this.saved = null
+  }
+
+  snapshot(upcoming: Line[]) {
+    if (!this.current) return this.saved ?? undefined
+    return { kind: this.current.kind, data: this.current.snapshot?.(upcoming) }
+  }
+
+  restore(data: unknown) {
+    this.saved = (data as { kind?: string; data?: unknown }) ?? null
   }
 }

@@ -9,13 +9,13 @@ import { DockedLog, LogPanel, type LogTab } from './components/screen/LogPanel'
 import { SettingsPanel, TranscriptPanel } from './components/screen/Panels'
 import { LiveIndicator, PartyBar, StatusBar, type LiveMode } from './components/screen/StatusBar'
 import { Subtitle } from './components/screen/Subtitle'
-import { MessageView, TransmitView } from './components/screen/Views'
+import { MessageView, TransmitView, WordCard } from './components/screen/Views'
 import { Waveform } from './components/screen/Waveform'
 import './components/screen/screen.css'
 import { ScriptedSource } from './engine/sources/scripted'
 import { AiSource } from './engine/sources/ai'
 import { AutoSource } from './engine/sources/auto'
-import { getConfig } from './api'
+import { getConfig, translate } from './api'
 import { stories } from '../shared/stories.ts'
 import { useConversation } from './engine/useConversation'
 import { useClock } from './hooks/useClock'
@@ -24,7 +24,7 @@ import { useShortcuts } from './hooks/useShortcuts'
 import { caveRescue } from './scenarios/caveRescue'
 import { useSettings } from './settings'
 import { defaultTheme, themeVars, type RadioTheme } from './theme'
-import { PLAYER_ID, type Party } from './types'
+import { PLAYER_ID, type Party, type TimedWord } from './types'
 import type { ScriptedScenario } from './engine/sources/scripted'
 import { nexusSkin } from './skins/nexus'
 import './layout.css'
@@ -103,8 +103,44 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const speakerColor =
     onAir === PLAYER_ID ? scenario.player.color : (scenario.parties.find((p) => p.id === (onAir ?? current?.line.speaker))?.color ?? left.color)
 
+  /** Word the player tapped: looked up in context while the channel waits. */
+  const [wordCard, setWordCard] = useState<{
+    lineId: string
+    index: number
+    word: string
+    translation?: string
+    note?: string
+    resumeAfter: boolean
+  } | null>(null)
+
+  const tapWord = (w: TimedWord, index: number) => {
+    const line = state.current?.line
+    if (!line) return
+    const resumeAfter = state.phase === 'running' && !state.paused && !wordCard?.resumeAfter
+    if (resumeAfter) conversation.pause()
+    const word = w.text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || w.text
+    const sentence = line.segments[w.segment]
+    const keep = !!wordCard?.resumeAfter
+    setWordCard({ lineId: line.id, index, word, resumeAfter: resumeAfter || keep })
+    const update = (patch: { translation?: string; note?: string }) =>
+      setWordCard((c) => (c && c.lineId === line.id && c.index === index ? { ...c, ...patch } : c))
+    if (config?.translate) {
+      translate([word], scenario.nativeLang, { source: scenario.targetLang, context: sentence.text })
+        .then(([t]) => update({ translation: t }))
+        .catch(() => update({ translation: '', note: sentence.translation }))
+    } else {
+      update({ translation: '', note: sentence.translation })
+    }
+  }
+
+  const closeWord = () => {
+    if (wordCard?.resumeAfter) conversation.resume()
+    setWordCard(null)
+  }
+
   const press = () => {
     setOverlay(null)
+    setWordCard(null)
     conversation.startTransmit(settings.inputMode)
   }
   const release = useCallback(() => {
@@ -120,7 +156,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onTranscript: () => toggle('transcript'),
     // Docked, the log is already open: L switches its tab instead.
     onLog: () => (docked ? setLogTab((t) => (t === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
-    onEscape: () => (transmitting ? conversation.cancelTransmit() : setOverlay(null)),
+    onEscape: () => (transmitting ? conversation.cancelTransmit() : wordCard ? closeWord() : setOverlay(null)),
   })
 
   const liveMode: LiveMode =
@@ -154,6 +190,27 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           onChange={(t) => conversation.setTxText(t)}
           onSubmit={() => void conversation.endTransmit()}
           onCancel={() => conversation.cancelTransmit()}
+        />
+      )
+    }
+    if (phase === 'standby' && state.resumed) {
+      const last = [...state.transcript].reverse().find((e) => e.speaker !== PLAYER_ID)
+      return (
+        <MessageView
+          key="resume"
+          eyebrow={`${scenario.channel} · ${state.transcript.length} transmissions logged`}
+          title="Standby"
+          body={last ? `“${last.segments.map((x) => x.text).join(' ')}”` : scenario.premise}
+          actions={
+            <>
+              <button type="button" className="chip" onClick={restart}>
+                Start fresh
+              </button>
+              <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
+                Resume
+              </button>
+            </>
+          }
         />
       )
     }
@@ -219,6 +276,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           color={speakerColor}
           lang={scenario.targetLang}
           onRevealTranslation={() => setRevealedLine(current.line.id)}
+          onWordTap={tapWord}
+          selectedWord={wordCard?.lineId === current.line.id ? wordCard.index : undefined}
         />
       )
     }
@@ -302,7 +361,19 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
         />
         <div className="main-panel__content">
           <AnimatePresence mode="wait">{content}</AnimatePresence>
-          {notice && <span className="notice">{notice}</span>}
+          {notice && !wordCard && <span className="notice">{notice}</span>}
+          <AnimatePresence>
+            {wordCard && wordCard.lineId === current?.line.id && !transmitting && (
+              <WordCard
+                key="word"
+                word={wordCard.word}
+                translation={wordCard.translation}
+                note={wordCard.note}
+                lang={scenario.targetLang}
+                onClose={closeWord}
+              />
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -352,7 +423,6 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onRestart={restart}
             engineStatus={engineStatus}
             feedNote={config && !config.dialogue ? 'Live feed offline' : 'Applies when you rejoin'}
-            showAccessCode={!!config?.accessCode}
             targetLabel={languageName(scenario.targetLang, scenario.nativeLang)}
             nativeLabel={languageName(scenario.nativeLang, scenario.nativeLang)}
           />

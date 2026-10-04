@@ -1,8 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ApiConfig } from '../../shared/api.ts'
-import { getConfig, setAccessCode } from '../api'
+import { getConfig, translate } from '../api'
 import type { Settings } from '../settings'
 import { Conversation } from './conversation'
+import { clearSession, loadSession, saveSession } from './session'
 import { RadioAudio, type RadioAudioOptions } from './radioAudio'
 import { BrowserSpeech } from './speech/browser'
 import { ElevenLabsSpeech } from './speech/elevenlabs'
@@ -17,10 +18,12 @@ export interface UseConversationOptions {
   audio?: RadioAudioOptions
   /** TTS route under /api. */
   ttsEndpoint?: string
+  /** Reopen the last saved session for this scenario (default true). */
+  resume?: boolean
 }
 
 /** Builds the audio graph, voices and controller once, and exposes the live state. */
-export function useConversation({ scenario, createSource, settings, audio: audioOptions, ttsEndpoint = '/tts' }: UseConversationOptions) {
+export function useConversation({ scenario, createSource, settings, audio: audioOptions, ttsEndpoint = '/tts', resume = true }: UseConversationOptions) {
   const [config, setConfig] = useState<ApiConfig | null>(null)
 
   const [{ conversation, audio, cfg }] = useState(() => {
@@ -35,16 +38,51 @@ export function useConversation({ scenario, createSource, settings, audio: audio
       audio,
       settings,
       cloudSpeechToText: () => !!cfg.current?.stt,
+      translatePlayer: (text) => {
+        if (!cfg.current?.translate) return null
+        const { targetLang, nativeLang } = scenario
+        // Naming the other language as the source handles mixed-language messages.
+        return Promise.all([
+          translate([text], targetLang, { source: nativeLang }),
+          translate([text], nativeLang, { source: targetLang }),
+        ]).then(([[target], [native]]) => ({ target, native }))
+      },
       voices: {
         browser: new BrowserSpeech({ rate: () => get().speechRate, volume: () => get().volume }),
         elevenlabs: new ElevenLabsSpeech(audio, { endpoint: ttsEndpoint, speed: () => get().speechRate }),
       },
     })
+    const saved = resume ? loadSession(scenario.id) : null
+    if (saved) conversation.restore(saved)
     return { conversation, audio, cfg }
   })
 
+  // Save at most once a second while things change, and right away when the page is hidden.
   useEffect(() => {
-    setAccessCode(settings.accessCode)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const save = () => {
+      clearTimeout(timer)
+      timer = undefined
+      const snap = conversation.snapshot()
+      if (snap) saveSession(snap)
+      // A fresh start (nothing said yet) replaces the old save.
+      else if (conversation.getState().phase === 'running') clearSession(scenario.id)
+    }
+    const unsubscribe = conversation.subscribe(() => {
+      timer ??= setTimeout(save, 1000)
+    })
+    const onHide = () => document.visibilityState === 'hidden' && save()
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', save)
+    return () => {
+      unsubscribe()
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', save)
+    }
+  }, [conversation, scenario.id])
+
+  useEffect(() => {
     conversation.updateSettings(settings)
   }, [conversation, settings])
 

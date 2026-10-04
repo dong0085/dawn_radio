@@ -9,8 +9,8 @@ export interface ApiConfig {
   tts: boolean
   /** ElevenLabs speech-to-text is set up. */
   stt: boolean
-  /** The server asks for an access code on every request. */
-  accessCode: boolean
+  /** DeepL translation is set up. */
+  translate: boolean
 }
 
 export interface StoryMemory {
@@ -72,6 +72,8 @@ export interface DialogueLine {
   speaker: string
   /** How to perform the line (e.g. "urgent"), sent to the voice as a [tag]. */
   delivery?: string
+  /** Radio signal quality of this transmission. */
+  signal?: 'strong' | 'fair' | 'weak'
   segments: DialogueSegment[]
   log?: DialogueLogUpdate
 }
@@ -97,10 +99,17 @@ export interface DialogueResponse {
   ending?: { outcome: Outcome; title: string; summary: string }
 }
 
+export interface TranslateResponse {
+  translations: { text: string; detected?: string }[]
+}
+
 export interface SttResponse {
   text: string
   languageCode?: string
 }
+
+/** Sample rate of streamed voice audio (16-bit mono PCM). */
+export const TTS_STREAM_SAMPLE_RATE = 24000
 
 /** Server-side limits (the server enforces them; the client trims to match). */
 export const LIMITS = {

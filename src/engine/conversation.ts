@@ -1,12 +1,13 @@
 import { PLAYER_ID, type Line, type LogState, type Scenario, type ScenarioEnding, type TimedWord, type TranscriptEntry } from '../types'
 import type { InputMode, Settings } from '../settings'
-import type { RadioAudio } from './radioAudio'
+import type { CarrierOptions, RadioAudio } from './radioAudio'
 import { applyLogUpdate, initialLog } from './log'
 import { ApiError } from '../api'
 import { recognitionSupported } from './recognizer'
 import { createBrowserTranscriber, createCloudTranscriber, type Transcriber } from './transcriber'
 import type { LineSource } from './sources/types'
 import type { Playback, PreparedSpeech, SpeechEngine, SpeechProvider } from './speech/types'
+import type { SavedSession } from './session'
 import { wordIndexAt } from './words'
 
 export type Phase = 'standby' | 'running' | 'ended'
@@ -40,6 +41,8 @@ export interface ConversationState {
   engine: SpeechEngine
   /** Short status message, e.g. "No transmission received". */
   notice: string | null
+  /** A saved session was reopened and is waiting on standby to resume. */
+  resumed: boolean
   /** People, places and events so far. */
   log: LogState
 }
@@ -52,6 +55,8 @@ export interface ConversationOptions {
   settings: Settings
   /** True when server speech-to-text is set up (otherwise the browser recognizer is used). */
   cloudSpeechToText?: () => boolean
+  /** Translates the player's message both ways: { target, native }. Falls back to the writers' version. */
+  translatePlayer?: (text: string) => Promise<{ target: string; native: string }> | null
   /** Start loading the next batch when this many lines (or fewer) are queued. */
   refillAt?: number
   /** How many upcoming lines get their audio prepared while the current one plays. */
@@ -80,6 +85,7 @@ const initialState = (engine: SpeechEngine, log: LogState): ConversationState =>
   engine,
   notice: null,
   log,
+  resumed: false,
 })
 
 /**
@@ -109,6 +115,8 @@ export class Conversation {
   private elevenLabsReady = false
   /** Player line waiting for its target-language rendering from the next batch. */
   private pendingPlayerId: string | null = null
+  /** Seconds already spent on the channel before a reload. */
+  private resumeElapsed = 0
   /** Latest player settings; read whenever needed. */
   settings: Settings
 
@@ -147,8 +155,9 @@ export class Conversation {
     if (this.state.phase === 'running') return
     this.opts.audio.ensure()
     this.opts.voices.browser.unlock?.()
-    this.startedAt = performance.now()
-    this.set({ phase: 'running', paused: false, engine: this.pickEngine() })
+    this.startedAt = performance.now() - this.resumeElapsed * 1000
+    this.resumeElapsed = 0
+    this.set({ phase: 'running', paused: false, resumed: false, engine: this.pickEngine() })
     this.advance()
   }
 
@@ -173,7 +182,7 @@ export class Conversation {
     this.opts.audio.ensure()
     this.set({ paused: false })
     if (this.playback && this.playingItem) {
-      this.opts.audio.carrierOn()
+      this.opts.audio.carrierOn(this.carrierFor(this.playingItem.line))
       this.playback.resume()
       this.set({ onAir: this.playingItem.line.speaker })
     } else {
@@ -225,7 +234,7 @@ export class Conversation {
         text = await this.recognizer.stop()
       } catch (err) {
         console.warn('[conversation] transcription failed', err)
-        this.flash(err instanceof ApiError && err.status === 401 ? 'Access code needed. Open settings.' : 'Transmission garbled')
+        this.flash('Transmission garbled')
         text = ''
       }
       this.recognizer = null
@@ -243,7 +252,12 @@ export class Conversation {
     }
 
     this.addTranscript({ id: `p${Date.now()}`, speaker: PLAYER_ID, segments: [{ text, translation: '' }] })
-    this.pendingPlayerId = this.state.transcript[this.state.transcript.length - 1].id
+    const playerId = this.state.transcript[this.state.transcript.length - 1].id
+    this.pendingPlayerId = playerId
+    this.opts
+      .translatePlayer?.(text)
+      ?.then((t) => this.applyPlayerRendering(t, playerId))
+      .catch((err) => console.warn('[conversation] translation failed', err))
     // The player spoke, so the channel answers right away.
     this.set({ paused: false, txText: '', activity: 'waiting' })
     this.requestBatch(text)
@@ -257,8 +271,41 @@ export class Conversation {
     this.advance()
   }
 
+  /** Everything worth keeping across a reload, or null if nothing has happened yet. */
+  snapshot(): SavedSession | null {
+    const s = this.state
+    if (!s.transcript.length) return null
+    return {
+      v: 1,
+      scenarioId: this.opts.scenario.id,
+      savedAt: Date.now(),
+      phase: s.phase === 'ended' ? 'ended' : 'running',
+      elapsed: s.phase === 'running' ? this.elapsed() : this.resumeElapsed,
+      transcript: s.transcript,
+      log: s.log,
+      ending: s.ending,
+      source: this.opts.source.snapshot?.(this.queue.map((q) => q.line)),
+    }
+  }
+
+  /** Reopens a saved session: on standby (ready to resume) or on the closing screen. */
+  restore(saved: SavedSession) {
+    this.opts.source.restore?.(saved.source)
+    this.resumeElapsed = saved.elapsed
+    this.state = {
+      ...this.state,
+      phase: saved.phase === 'ended' ? 'ended' : 'standby',
+      transcript: saved.transcript,
+      log: saved.log,
+      ending: saved.ending,
+      resumed: saved.phase !== 'ended',
+    }
+    this.listeners.forEach((l) => l())
+  }
+
   restart() {
     this.epoch++
+    this.resumeElapsed = 0
     this.stopPlayback()
     this.recognizer?.abort()
     this.recognizer = null
@@ -379,9 +426,9 @@ export class Conversation {
         console.error('[conversation] batch failed', err)
         this.batchPending = false
         this.batchAbort = null
-        if (err instanceof ApiError && (err.status === 401 || err.status === 400)) {
-          // Retrying won't help; wait for the player to fix settings and resume.
-          this.flash(err.status === 401 ? 'Access code needed. Open settings.' : 'Channel error', 6000)
+        if (err instanceof ApiError && err.status === 400) {
+          // Retrying won't help; wait for the player to resume.
+          this.flash('Channel error', 6000)
           this.set({ paused: true, activity: 'idle' })
           return
         }
@@ -414,6 +461,12 @@ export class Conversation {
     return item.prepared
   }
 
+  /** Channel sound for a line: the speaker's background and signal strength. */
+  private carrierFor(line: Line): CarrierOptions {
+    const radio = this.opts.scenario.parties.find((p) => p.id === line.speaker)?.radio
+    return { ambience: radio?.ambience, signal: line.signal ?? radio?.signal ?? 1 }
+  }
+
   /** Prepares only the next few lines, so cut-off lines rarely cost a voice request. */
   private prepareAhead() {
     this.queue.slice(0, this.opts.lookahead).forEach((item) => void this.prepare(item))
@@ -434,7 +487,7 @@ export class Conversation {
         if (notice) this.flash(notice, 2500)
       }
     }
-    this.opts.audio.carrierOn()
+    this.opts.audio.carrierOn(this.carrierFor(item.line))
     this.set({
       activity: 'speaking',
       onAir: item.line.speaker,
@@ -536,10 +589,10 @@ export class Conversation {
   }
 
   /** Adds the target-language version and translation to the player's last line. */
-  private applyPlayerRendering(player: { target: string; native: string }) {
-    const id = this.pendingPlayerId
+  /** Fills in the player's line: target-language version + translation. The first answer wins. */
+  private applyPlayerRendering(player: { target: string; native: string }, id = this.pendingPlayerId) {
+    if (!id || id !== this.pendingPlayerId) return
     this.pendingPlayerId = null
-    if (!id) return
     this.set({
       transcript: this.state.transcript.map((e) =>
         e.id === id

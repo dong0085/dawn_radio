@@ -42,6 +42,6 @@ function devApi(env: Env): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), devApi(loadEnv(mode, process.cwd(), ['ELEVENLABS_', 'ANTHROPIC_', 'CLAUDE_', 'APP_']) as Env)],
+  plugins: [react(), devApi(loadEnv(mode, process.cwd(), ['ELEVENLABS_', 'ANTHROPIC_', 'CLAUDE_', 'DEEPL_']) as Env)],
   server: { host: true },
 }))

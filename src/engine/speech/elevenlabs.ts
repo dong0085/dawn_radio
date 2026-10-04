@@ -1,7 +1,9 @@
-import { apiFetch } from '../../api'
+import { TTS_STREAM_SAMPLE_RATE } from '../../../shared/api.ts'
+import { apiFetch, ApiError, readNdjson } from '../../api'
 import type { Line, Party } from '../../types'
 import type { RadioAudio } from '../radioAudio'
 import { lineText, wordsFromAlignment, type CharAlignment } from '../words'
+import { playStream, StreamedClip } from './stream'
 import type { FinishReason, Playback, PreparedSpeech, SpeechProvider } from './types'
 
 export interface ElevenLabsOptions {
@@ -11,7 +13,18 @@ export interface ElevenLabsOptions {
   speed?: () => number
   /** Voice used when a party has none set. */
   fallbackVoiceId?: string
+  /** Stream audio and start playing on the first chunk (default true). */
+  stream?: boolean
+  /** Seconds of audio to buffer before a streamed line can start. */
+  preroll?: number
 }
+
+interface StreamChunk {
+  audio_base64?: string
+  alignment?: CharAlignment | null
+}
+
+const decodeBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
 
 interface TtsResponse {
   audio_base64: string
@@ -22,6 +35,8 @@ interface TtsResponse {
 export class ElevenLabsSpeech implements SpeechProvider {
   readonly id = 'elevenlabs' as const
   private cache = new Map<string, Promise<{ buffer: AudioBuffer; data: TtsResponse }>>()
+  /** Streamed lines, kept for replays and lines that come back after a cut-in. */
+  private clips = new Map<string, { clip: StreamedClip; ready: Promise<void> }>()
   private audio: RadioAudio
   private opts: ElevenLabsOptions
 
@@ -34,11 +49,13 @@ export class ElevenLabsSpeech implements SpeechProvider {
     const text = lineText(line.segments)
     const voiceId = party?.voice.elevenLabsVoiceId ?? this.opts.fallbackVoiceId ?? 'JBFqnCBsd6RMkjVDRZzb'
     const speed = this.opts.speed?.() ?? 1
-    const key = `${voiceId}|${speed}|${text}`
+    const key = `${voiceId}|${speed}|${line.delivery ?? ''}|${text}`
+
+    if (this.opts.stream !== false) return this.prepareStream(key, line, voiceId, lang, speed)
 
     let pending = this.cache.get(key)
     if (!pending) {
-      pending = this.fetchAudio(text, voiceId, lang, speed)
+      pending = this.fetchAudio(text, voiceId, lang, speed, line)
       this.cache.set(key, pending)
       pending.catch(() => this.cache.delete(key))
     }
@@ -55,11 +72,69 @@ export class ElevenLabsSpeech implements SpeechProvider {
     }
   }
 
-  private async fetchAudio(text: string, voiceId: string, lang: string, speed: number) {
+  private async prepareStream(key: string, line: Line, voiceId: string, lang: string, speed: number): Promise<PreparedSpeech> {
+    let entry = this.clips.get(key)
+    if (!entry) {
+      entry = this.startStream(line, voiceId, lang, speed)
+      this.clips.set(key, entry)
+      entry.ready.catch(() => this.clips.delete(key))
+    }
+    const { clip, ready } = entry
+    await ready
+    const audio = this.audio
+    return {
+      engine: 'elevenlabs',
+      words: clip.words,
+      get duration() {
+        return clip.duration
+      },
+      filtered: true,
+      play: () => playStream(audio, clip),
+    }
+  }
+
+  /** Opens the voice stream; `ready` resolves once enough audio has arrived to start. */
+  private startStream(line: Line, voiceId: string, lang: string, speed: number) {
+    const clip = new StreamedClip(line.segments, TTS_STREAM_SAMPLE_RATE)
+    const preroll = this.opts.preroll ?? 0.3
+    const ready = new Promise<void>((resolve, reject) => {
+      const off = clip.onChange(() => {
+        if (clip.duration < preroll && !clip.done) return
+        off()
+        if (clip.samples) resolve()
+        else reject(new ApiError(502, 'No audio received'))
+      })
+    })
+
+    void (async () => {
+      try {
+        const res = await apiFetch(`${this.opts.endpoint ?? '/tts'}/stream`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(this.body(line, voiceId, lang, speed)),
+        })
+        await readNdjson<StreamChunk>(res, (chunk) => {
+          if (chunk.alignment) clip.pushAlignment(chunk.alignment)
+          if (chunk.audio_base64) clip.pushPcm(decodeBase64(chunk.audio_base64))
+        })
+        clip.finish()
+      } catch (err) {
+        console.warn('[elevenlabs] stream failed', err)
+        clip.finish(true)
+      }
+    })()
+    return { clip, ready }
+  }
+
+  private body(line: Line, voiceId: string, lang: string, speed: number) {
+    return { text: lineText(line.segments), voiceId, languageCode: lang.split('-')[0], speed, delivery: line.delivery }
+  }
+
+  private async fetchAudio(text: string, voiceId: string, lang: string, speed: number, line?: Line) {
     const res = await apiFetch(this.opts.endpoint ?? '/tts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, voiceId, languageCode: lang.split('-')[0], speed }),
+      body: JSON.stringify(line ? this.body(line, voiceId, lang, speed) : { text, voiceId, languageCode: lang.split('-')[0], speed }),
     })
     const data = (await res.json()) as TtsResponse
     const bytes = Uint8Array.from(atob(data.audio_base64), (c) => c.charCodeAt(0))

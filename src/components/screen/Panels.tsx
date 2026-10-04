@@ -159,8 +159,6 @@ export interface SettingsPanelProps {
   restartLabel?: string
   /** Small note under the Feed row. */
   feedNote?: string
-  /** Show the access code field (the server asks for one). */
-  showAccessCode?: boolean
 }
 
 export function SettingsPanel({
@@ -173,7 +171,6 @@ export function SettingsPanel({
   nativeLabel,
   restartLabel = 'Rejoin channel',
   feedNote,
-  showAccessCode,
 }: SettingsPanelProps) {
   const onOff = [
     { value: 1, label: 'On' },
@@ -192,19 +189,6 @@ export function SettingsPanel({
             onChange={(v) => update('feed', v)}
           />
         </Row>
-        {showAccessCode && (
-          <Row label="Access code">
-            <input
-              className="settings__input"
-              type="password"
-              value={s.accessCode}
-              onChange={(e) => update('accessCode', e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
-              autoComplete="off"
-              aria-label="Access code"
-            />
-          </Row>
-        )}
         <Row label="Translation">
           <Segmented value={s.showTranslation ? 1 : 0} options={onOff} onChange={(v) => update('showTranslation', !!v)} />
         </Row>

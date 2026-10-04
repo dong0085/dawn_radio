@@ -1,13 +1,12 @@
 import type { ApiConfig } from '../shared/api.ts'
 import { handleDialogue, type DialogueEnv } from './dialogue.ts'
 import { json } from './http.ts'
+import { rateLimit } from './rateLimit.ts'
 import { handleStt, type SttEnv } from './stt.ts'
+import { handleTranslate, type TranslateEnv } from './translate.ts'
 import { handleTts, type TtsEnv } from './tts.ts'
 
-export interface Env extends TtsEnv, SttEnv, DialogueEnv {
-  /** When set, every API call must send this in the x-access-code header. */
-  APP_ACCESS_CODE?: string
-}
+export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv {}
 
 /**
  * All /api routes. Used by the Cloudflare Pages Function in production
@@ -21,13 +20,16 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
       dialogue: !!env.ANTHROPIC_API_KEY,
       tts: !!env.ELEVENLABS_API_KEY,
       stt: !!env.ELEVENLABS_API_KEY,
-      accessCode: !!env.APP_ACCESS_CODE,
+      translate: !!env.DEEPL_API_KEY,
     } satisfies ApiConfig)
   }
 
-  if (env.APP_ACCESS_CODE && request.method !== 'GET' && request.headers.get('x-access-code') !== env.APP_ACCESS_CODE) {
-    return json({ error: 'Access code required' }, 401)
-  }
+  const visitor = request.headers.get('cf-connecting-ip') ?? 'local'
+  const wait = rateLimit(visitor, path)
+  if (wait) return new Response(JSON.stringify({ error: 'Too many requests' }), {
+    status: 429,
+    headers: { 'content-type': 'application/json', 'retry-after': String(wait) },
+  })
 
   try {
     switch (path) {
@@ -39,6 +41,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
         return await handleTts(request, env, { stream: true })
       case '/stt':
         return await handleStt(request, env)
+      case '/translate':
+        return await handleTranslate(request, env)
       default:
         return json({ error: 'Not found' }, 404)
     }

@@ -10,8 +10,11 @@ export interface AiSourceOptions {
   recentLines?: number
 }
 
-let counter = 0
+// Unique across reloads, so saved transcript ids never collide with new ones.
+let counter = Date.now()
 const emptyMemory = (): StoryMemory => ({ summary: '', facts: [] })
+/** Signal words from the writers, as strengths for the radio. */
+const SIGNAL = { strong: 1, fair: 0.65, weak: 0.3 } as const
 
 function toHistory(entries: TranscriptEntry[]): HistoryLine[] {
   return entries.map((e) => ({
@@ -34,6 +37,7 @@ function toSnapshot(log: LogState | undefined): LogSnapshot | undefined {
  * Keeps the story memory (summary + facts) between batches.
  */
 export class AiSource implements LineSource {
+  readonly kind = 'live'
   private memory = emptyMemory()
   private batchIndex = 0
   /** Memory before the last batch, to roll back if that batch never airs. */
@@ -62,7 +66,7 @@ export class AiSource implements LineSource {
       {
         signal,
         onLine: (l) => {
-          const line: Line = { ...l, id: `ai${++counter}` }
+          const line: Line = { ...l, id: `ai${++counter}`, signal: l.signal ? SIGNAL[l.signal] : undefined }
           lines.push(line)
           onLine?.(line)
         },
@@ -88,6 +92,17 @@ export class AiSource implements LineSource {
   reset() {
     this.memory = emptyMemory()
     this.batchIndex = 0
+    this.previous = null
+  }
+
+  snapshot() {
+    return { memory: this.memory, batchIndex: this.batchIndex }
+  }
+
+  restore(data: unknown) {
+    const d = data as { memory?: StoryMemory; batchIndex?: number } | undefined
+    this.memory = d?.memory ?? emptyMemory()
+    this.batchIndex = d?.batchIndex ?? 0
     this.previous = null
   }
 }
