@@ -1,0 +1,5 @@
+# Cloudflare Pages project. Deploy with: npm run deploy
+name = "dawn-radio"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]

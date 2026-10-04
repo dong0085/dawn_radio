@@ -1,0 +1,282 @@
+.stage--photo::before {
+  display: none;
+}
+
+.photo-device {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  font-family: var(--font-ui);
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.photo-device > * {
+  position: absolute;
+}
+
+/* ---------- Image layers ---------- */
+
+.photo-device__base {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* fade the image edges into the page */
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent),
+    linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+  mask-composite: intersect;
+}
+
+.photo-pressed {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 60ms ease-out;
+  /* soft edges so the swap has no seam */
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 8%, #000 92%, transparent),
+    linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 8%, #000 92%, transparent),
+    linear-gradient(to bottom, transparent, #000 7%, #000 93%, transparent);
+  mask-composite: intersect;
+}
+.photo-pressed.is-on {
+  opacity: 1;
+}
+
+/* ---------- Screen ---------- */
+
+.photo-device .glass {
+  inset: auto;
+  box-shadow:
+    inset 0 0 40px rgba(0, 0, 0, 0.8),
+    inset 0 0 3px rgba(0, 0, 0, 0.9),
+    0 0 0 2px rgba(0, 0, 0, 0.85),
+    /* the display lights up the bezel lip a little */
+    0 0 46px rgba(70, 210, 195, 0.07);
+}
+.photo-device .glass::before {
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0 2px, transparent 2px 6px);
+}
+
+.photo-glass__content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.photo-spill {
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  width: 40%;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 7;
+  mix-blend-mode: screen;
+  transition: opacity 300ms ease-out;
+}
+.photo-spill--left {
+  left: 0;
+  background: radial-gradient(ellipse 70% 55% at 0% 50%, color-mix(in srgb, var(--light) 20%, transparent), transparent 70%);
+}
+.photo-spill--right {
+  right: 0;
+  background: radial-gradient(ellipse 70% 55% at 100% 50%, color-mix(in srgb, var(--light) 20%, transparent), transparent 70%);
+}
+.photo-spill.is-on {
+  opacity: 1;
+  transition-duration: 80ms;
+}
+
+/* ---------- Lights ---------- */
+
+.photo-light {
+  pointer-events: none;
+  background: color-mix(in srgb, var(--light) 9%, #040505);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+  transition: background 200ms ease-out, box-shadow 300ms ease-out;
+}
+.photo-light::after {
+  /* light falling on the metal around it */
+  content: '';
+  position: absolute;
+  inset: -60px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--light) 30%, transparent), transparent);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+.photo-light.is-on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--light) 50%, #fff), var(--light));
+  box-shadow:
+    0 0 8px var(--light),
+    0 0 22px var(--light),
+    0 0 48px color-mix(in srgb, var(--light) 55%, transparent);
+  transition-duration: 50ms, 100ms;
+}
+.photo-light.is-on::after {
+  opacity: 1;
+  transition-duration: 80ms;
+}
+
+.photo-light--side {
+  z-index: 2;
+}
+.photo-light--side.is-on {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--light) 65%, #fff), var(--light));
+}
+.photo-light--side::after {
+  inset: -30px -50px;
+}
+
+.photo-led {
+  pointer-events: none;
+  background: #17201b;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+  transition: background 120ms, box-shadow 120ms;
+}
+.photo-led::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  top: 2px;
+  height: 30%;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.3);
+}
+.photo-led--rx,
+.photo-led--busy {
+  background: var(--led-rx);
+  box-shadow:
+    0 0 8px var(--led-rx),
+    0 0 22px color-mix(in srgb, var(--led-rx) 60%, transparent),
+    0 0 50px color-mix(in srgb, var(--led-rx) 25%, transparent);
+}
+.photo-led--tx {
+  background: var(--led-tx);
+  box-shadow:
+    0 0 8px var(--led-tx),
+    0 0 24px color-mix(in srgb, var(--led-tx) 70%, transparent),
+    0 0 50px color-mix(in srgb, var(--led-tx) 30%, transparent);
+}
+.photo-led--busy {
+  animation: photo-led-blink 0.9s steps(2, jump-none) infinite;
+}
+@keyframes photo-led-blink {
+  50% {
+    background: #17201b;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+  }
+}
+
+/* ---------- Printed labels ---------- */
+
+.photo-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  padding-left: 0.24em;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(198, 204, 208, 0.56);
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.85),
+    0 -1px 0 rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.photo-label--brand {
+  letter-spacing: 0.26em;
+  padding-left: 0.26em;
+  color: rgba(198, 204, 208, 0.62);
+}
+.photo-label--sub {
+  letter-spacing: 0.4em;
+  padding-left: 0.4em;
+  color: rgba(198, 204, 208, 0.45);
+}
+.photo-label--talk {
+  color: rgba(198, 204, 208, 0.5);
+  transition: color 120ms, transform 60ms;
+}
+
+/* ---------- Keys ---------- */
+
+.photo-key {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.photo-key:disabled {
+  cursor: default;
+}
+.photo-key:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 6px;
+}
+
+.photo-key__face {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  display: grid;
+  place-items: center;
+  transition: transform 80ms ease-out, filter 80ms ease-out;
+}
+.photo-key:active:not(:disabled) .photo-key__face {
+  transform: scale(0.965);
+  filter: brightness(0.78);
+}
+
+.photo-key--round {
+  border-radius: 50%;
+}
+
+.photo-key__icon-patch {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 36%, var(--inner), var(--outer) 75%);
+  -webkit-mask-image: radial-gradient(circle, #000 68%, transparent 100%);
+  mask-image: radial-gradient(circle, #000 68%, transparent 100%);
+}
+.photo-key__icon {
+  color: #a9aeb2;
+  transform: translateX(3px);
+  filter: drop-shadow(0 -1px 0 rgba(0, 0, 0, 0.9)) drop-shadow(0 2px 1px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.15));
+}
+
+.photo-key--talk {
+  touch-action: none;
+  border-radius: 40px;
+}
+.photo-key--talk.is-pressed .photo-label--talk {
+  color: color-mix(in srgb, var(--player) 60%, rgba(198, 204, 208, 0.5));
+  transform: translate(-50%, calc(-50% + 4px));
+}
+.photo-key--talk:disabled .photo-label--talk {
+  opacity: 0.5;
+}
+
+.photo-key--grille:disabled .photo-key__face {
+  filter: brightness(0.7);
+}

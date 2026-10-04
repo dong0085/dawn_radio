@@ -1,0 +1,492 @@
+/* ---------- Stage ---------- */
+
+.stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 42%, rgba(70, 90, 95, 0.18), transparent 70%),
+    radial-gradient(ellipse at 50% 50%, #16191b 0%, #08090a 75%);
+}
+
+.stage::before {
+  /* table grain */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.device {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  flex: none;
+  transform-origin: center center;
+  font-family: var(--font-ui);
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- Knobs and antenna (peeking above the body) ---------- */
+
+.device__knobs {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 30px;
+}
+
+.knob {
+  position: absolute;
+  top: 0;
+  width: 46px;
+  height: 30px;
+  border-radius: 8px 8px 3px 3px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 2px, rgba(0, 0, 0, 0.25) 2px 5px),
+    linear-gradient(180deg, #2b2e31, #121416);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.6);
+}
+.knob--left { left: 92px; }
+.knob--right { right: 92px; width: 40px; }
+
+.antenna {
+  position: absolute;
+  top: -4px;
+  right: 44px;
+  width: 28px;
+  height: 34px;
+  border-radius: 12px 12px 4px 4px;
+  background: linear-gradient(90deg, #0d0e0f, #2a2d30 40%, #141618);
+  box-shadow: inset 0 2px 2px rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- Body ---------- */
+
+.device__shadow {
+  position: absolute;
+  inset: 16px 8px 6px;
+  filter: drop-shadow(0 28px 36px rgba(0, 0, 0, 0.75)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6));
+}
+
+.device__body {
+  --chamfer-top: 40px;
+  --chamfer-bottom: 30px;
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(
+    var(--chamfer-top) 0,
+    calc(100% - var(--chamfer-top)) 0,
+    100% var(--chamfer-top),
+    100% calc(100% - var(--chamfer-bottom)),
+    calc(100% - var(--chamfer-bottom)) 100%,
+    var(--chamfer-bottom) 100%,
+    0 calc(100% - var(--chamfer-bottom)),
+    0 var(--chamfer-top)
+  );
+  /* outer edge color shows as a bevel around the inner face */
+  background: linear-gradient(160deg, #5a6066 0%, #2c3034 30%, #1a1c1f 70%, #3a3f44 100%);
+}
+
+.device__body::before {
+  /* main face */
+  content: '';
+  position: absolute;
+  inset: 2px;
+  clip-path: polygon(
+    calc(var(--chamfer-top) - 1px) 0,
+    calc(100% - var(--chamfer-top) + 1px) 0,
+    100% calc(var(--chamfer-top) - 1px),
+    100% calc(100% - var(--chamfer-bottom) + 1px),
+    calc(100% - var(--chamfer-bottom) + 1px) 100%,
+    calc(var(--chamfer-bottom) - 1px) 100%,
+    0 calc(100% - var(--chamfer-bottom) + 1px),
+    0 calc(var(--chamfer-top) - 1px)
+  );
+  background:
+    radial-gradient(ellipse 80% 40% at 30% 0%, rgba(255, 255, 255, 0.07), transparent 70%),
+    radial-gradient(ellipse 120% 60% at 50% 100%, rgba(0, 0, 0, 0.45), transparent 70%),
+    linear-gradient(180deg, var(--metal-light) 0%, var(--metal) 25%, var(--metal) 70%, var(--metal-dark) 100%);
+}
+
+.device__texture {
+  /* grain + worn patches */
+  position: absolute;
+  inset: 0;
+  background-image: var(--grain), var(--mottle), url('/textures/scratches.svg');
+  background-size: 180px 180px, 600px 600px, 400px 800px;
+  mix-blend-mode: overlay;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.device__skin {
+  /* optional photo skin from theme.body.image */
+  position: absolute;
+  inset: 0;
+  background: var(--body-image) center / cover no-repeat;
+  pointer-events: none;
+}
+
+.device__body > * {
+  position: absolute;
+}
+
+/* side rubber grips */
+.grip {
+  top: 120px;
+  height: 360px;
+  width: 11px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px, rgba(0, 0, 0, 0.55) 3px 6px),
+    linear-gradient(90deg, #0b0c0d, var(--rubber));
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.8);
+}
+.grip--left { left: 0; border-radius: 0 3px 3px 0; }
+.grip--right { right: 0; transform: scaleX(-1); border-radius: 0 3px 3px 0; }
+
+/* orange rubber bumpers */
+.bumper {
+  width: 7px;
+  border-radius: 2px;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.5), transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bumper) 70%, #000) , var(--bumper) 40%, color-mix(in srgb, var(--bumper) 55%, #000));
+  box-shadow: inset 0 1px 0 rgba(255, 190, 120, 0.25);
+  opacity: 0.9;
+}
+.bumper--tl { left: 0; top: 52px; height: 52px; }
+.bumper--tr { right: 0; top: 52px; height: 52px; transform: scaleX(-1); }
+.bumper--bl { left: 0; top: 560px; height: 90px; }
+.bumper--br { right: 0; top: 560px; height: 90px; transform: scaleX(-1); }
+
+/* ---------- Top plate ---------- */
+
+.top-plate {
+  top: 12px;
+  left: 26px;
+  right: 26px;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-plate,
+.rxtx-plate {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.2)),
+    var(--metal);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 2px 3px rgba(0, 0, 0, 0.5);
+}
+
+.brand-plate {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 22px 0 18px;
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 14px) 100%, 0 100%, 0 10px);
+  line-height: 1;
+}
+
+.brand,
+.brand-sub,
+.rxtx-label,
+.engraved {
+  color: var(--engrave);
+  /* engraved: dark above, light below */
+  text-shadow:
+    0 -1px 0 rgba(0, 0, 0, 0.85),
+    0 1px 0 rgba(255, 255, 255, 0.12);
+  font-weight: 500;
+}
+
+.brand {
+  font-size: 17px;
+  letter-spacing: 0.22em;
+}
+.brand-sub {
+  margin-top: 3px;
+  font-size: 8.5px;
+  letter-spacing: 0.32em;
+  padding-left: 6px;
+  opacity: 0.8;
+}
+
+.top-speaker {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 4px;
+}
+.top-speaker span {
+  height: 8px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #050606, #121416);
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.rxtx-plate {
+  gap: 12px;
+  padding: 0 14px 0 20px;
+  border-radius: 14px;
+  clip-path: polygon(14px 0, 100% 0, 100% 100%, 0 100%, 0 14px);
+}
+.rxtx-label {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+}
+
+/* ---------- LED ---------- */
+
+.led {
+  position: relative;
+  width: 22px;
+  height: 9px;
+  border-radius: 6px;
+  background: var(--led-off);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.8),
+    0 0 0 2px #0b0c0d,
+    0 1px 0 2px rgba(255, 255, 255, 0.06);
+  transition: background 120ms, box-shadow 120ms;
+}
+.led::after {
+  /* lens highlight */
+  content: '';
+  position: absolute;
+  inset: 1px 4px auto;
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.led--rx {
+  background: var(--led-rx);
+  box-shadow:
+    0 0 6px var(--led-rx),
+    0 0 14px color-mix(in srgb, var(--led-rx) 60%, transparent),
+    0 0 0 2px #0b0c0d;
+}
+.led--tx {
+  background: var(--led-tx);
+  box-shadow:
+    0 0 6px var(--led-tx),
+    0 0 16px color-mix(in srgb, var(--led-tx) 70%, transparent),
+    0 0 0 2px #0b0c0d;
+}
+.led--busy {
+  background: var(--led-rx);
+  animation: led-blink 0.9s steps(2, jump-none) infinite;
+  box-shadow: 0 0 6px var(--led-rx), 0 0 0 2px #0b0c0d;
+}
+@keyframes led-blink {
+  50% { background: var(--led-off); box-shadow: 0 0 0 2px #0b0c0d; }
+}
+
+/* ---------- Screws ---------- */
+
+.screw {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #5d6268, #2a2d30 55%, #101112 100%);
+  box-shadow:
+    0 0 0 2px #0c0d0e,
+    0 1px 0 2px rgba(255, 255, 255, 0.07),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.7);
+}
+.screw::before,
+.screw::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62%;
+  height: 2px;
+  border-radius: 1px;
+  background: #0b0c0d;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15);
+  transform: translate(-50%, -50%) rotate(var(--angle));
+}
+.screw::after {
+  transform: translate(-50%, -50%) rotate(calc(var(--angle) + 90deg));
+}
+
+/* ---------- Bezel and glass ---------- */
+
+.bezel {
+  top: 88px;
+  left: 10px;
+  right: 10px;
+  height: 394px;
+  border-radius: 36px;
+  background:
+    linear-gradient(180deg, #1a1c1e, #0d0e0f 40%, #141618);
+  box-shadow:
+    0 0 0 2px #070808,
+    0 0 0 3px rgba(255, 255, 255, 0.08),
+    0 -2px 0 3px rgba(0, 0, 0, 0.4),
+    inset 0 2px 1px rgba(255, 255, 255, 0.07),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.8);
+}
+
+.bezel::before {
+  /* inner lip around the glass */
+  content: '';
+  position: absolute;
+  inset: 11px 17px;
+  border-radius: 26px;
+  box-shadow:
+    0 0 0 2px #050606,
+    0 0 0 3px rgba(120, 200, 190, 0.08),
+    0 0 18px rgba(0, 0, 0, 0.9);
+}
+
+.glass {
+  position: absolute;
+  inset: 13px 19px;
+  border-radius: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 40%, var(--glass), var(--glass-deep) 85%);
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.75),
+    inset 0 0 2px rgba(0, 0, 0, 0.9);
+  isolation: isolate;
+}
+
+.glass::before {
+  /* scanlines */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 3px);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.glass::after {
+  /* reflection on the glass */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(158deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.02) 28%, transparent 42%),
+    radial-gradient(ellipse 70% 30% at 85% 105%, rgba(255, 255, 255, 0.04), transparent 70%);
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* ---------- Side lights ---------- */
+
+.side-light {
+  position: absolute;
+  width: 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--light) 14%, #050606);
+  box-shadow:
+    inset 0 0 2px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(0, 0, 0, 0.8);
+  transition: background 140ms ease-out, box-shadow 260ms ease-out;
+  z-index: 2;
+}
+.side-light--left { left: 6px; }
+.side-light--right { right: 6px; }
+
+.side-light.is-on {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--light) 70%, #fff), var(--light));
+  box-shadow:
+    0 0 4px var(--light),
+    0 0 12px var(--light),
+    0 0 28px color-mix(in srgb, var(--light) 60%, transparent),
+    0 0 0 1px rgba(0, 0, 0, 0.6);
+  transition-duration: 60ms, 120ms;
+}
+
+/* colored light spilling onto the glass edge */
+.spill {
+  position: absolute;
+  top: 70px;
+  bottom: 70px;
+  width: 90px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 7;
+  mix-blend-mode: screen;
+  transition: opacity 300ms ease-out;
+}
+.spill--left {
+  left: 19px;
+  background: radial-gradient(ellipse 100% 55% at 0% 50%, color-mix(in srgb, var(--light) 22%, transparent), transparent 70%);
+}
+.spill--right {
+  right: 19px;
+  background: radial-gradient(ellipse 100% 55% at 100% 50%, color-mix(in srgb, var(--light) 22%, transparent), transparent 70%);
+}
+.spill.is-on {
+  opacity: 1;
+  transition-duration: 80ms;
+}
+
+/* ---------- Light bars ---------- */
+
+.light-bar {
+  display: block;
+  height: 8px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--light) 12%, #080909);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: background 200ms ease-out, box-shadow 300ms ease-out;
+}
+.light-bar.is-on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--light) 55%, #fff), var(--light));
+  box-shadow:
+    0 0 6px var(--light),
+    0 0 16px var(--light),
+    0 0 34px color-mix(in srgb, var(--light) 55%, transparent);
+  transition-duration: 50ms, 100ms;
+}
+
+/* ---------- Control deck and foot ---------- */
+
+.deck {
+  top: 494px;
+  left: 10px;
+  right: 10px;
+  height: 246px;
+}
+
+.foot {
+  left: 70px;
+  right: 70px;
+  top: 744px;
+  height: 18px;
+  display: flex;
+  gap: 14px;
+}
+.foot span {
+  flex: 1;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0a0b0c, #1d2023);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.06);
+}
