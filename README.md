@@ -10,8 +10,8 @@ A live radio drama for language learners. Two AI parties talk over a walkie-talk
 ## Run locally
 
 ```bash
-npm install
-npm run dev          # http://localhost:5173
+pnpm install
+pnpm dev             # http://localhost:5173
 ```
 
 Copy `.env.example` to `.env.local` and add your keys:
@@ -26,7 +26,7 @@ Optional: `CLAUDE_MODEL` (default `claude-opus-5-5`), `CLAUDE_EFFORT` (default `
 
 With no keys, the app still runs: drill feed, the browser's built-in voice, and the browser's speech recognition. `/api/config` shows what is set up.
 
-`npm run preview:cf` runs the built app on Cloudflare's local runtime, the same as production.
+`pnpm preview:cf` runs the built app on Cloudflare's local runtime, the same as production.
 
 ## Controls
 
@@ -43,21 +43,28 @@ Talk input records your voice and sends it to ElevenLabs Scribe. Without an Elev
 
 ## Deploy (Cloudflare Pages, free)
 
+Every push to `main` deploys to production. Other branches and pull requests get their own preview URL.
+
+One-time setup in the Cloudflare dashboard: **Workers & Pages → Create → Pages → Import an existing Git repository**, pick this repo, then:
+
+| Setting | Value |
+| --- | --- |
+| Project name | `dawn-radio` (matches `wrangler.toml`) |
+| Production branch | `main` |
+| Framework preset | None |
+| Build command | `pnpm build` |
+| Build output directory | `dist` |
+
+Add the keys as encrypted environment variables, in the setup screen or later in the project settings: `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, and `APP_ACCESS_CODE` (recommended). You can also set them from the terminal:
+
 ```bash
-npx wrangler login                                        # once, opens the browser
-npx wrangler pages project create dawn-radio --production-branch main   # once
-npm run deploy
+pnpm exec wrangler login                                                  # once, opens the browser
+pnpm exec wrangler pages secret put ANTHROPIC_API_KEY --project-name dawn-radio
 ```
 
-Then add the keys as secrets (each command asks for the value):
+New secret values take effect on the next deploy (a push, or **Retry deployment** in the dashboard).
 
-```bash
-npx wrangler pages secret put ANTHROPIC_API_KEY --project-name dawn-radio
-npx wrangler pages secret put ELEVENLABS_API_KEY --project-name dawn-radio
-npx wrangler pages secret put APP_ACCESS_CODE --project-name dawn-radio   # recommended
-```
-
-Run `npm run deploy` again after adding secrets so the new values take effect.
+`pnpm run deploy` uploads a build straight from your machine, for when you want to skip Git.
 
 ## How it fits together
 

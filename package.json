@@ -3,13 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy",
-    "preview:cf": "npm run build && wrangler pages dev"
+    "deploy": "pnpm build && wrangler pages deploy",
+    "preview:cf": "pnpm build && wrangler pages dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -26,5 +27,11 @@
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "wrangler": "^4.147.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
   }
 }
