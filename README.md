@@ -1,14 +1,79 @@
 # Dawn Radio
 
-A live radio drama for language learners. Two AI parties talk over a walkie-talkie channel, and the player listens, pauses, or holds push-to-talk to join in. Every line shows bilingual subtitles with word-by-word highlighting.
+**A live radio drama for language learners.** You tune in to a walkie-talkie channel where two characters handle an emergency in French. Claude writes the story as you listen, ElevenLabs voices it, and you can hold the talk key at any time to join in. The characters hear you and the story changes.
 
-- **Live feed:** Claude writes the dialogue as you listen, 4 lines at a time, streamed line by line. It reacts to what you say, quietly repeats your message back in correct French, keeps the field log up to date, and steers toward an ending.
-- **Voices:** ElevenLabs, streamed, with word timings for the highlight. Only the next line is prepared ahead, so cutting in wastes at most one line. Delivery cues like `[urgent]` shape the performance.
-- **Your voice:** ElevenLabs Scribe turns push-to-talk audio into text (any language, or a mix). DeepL then shows your message in both languages.
-- **Tap a word** in the subtitle to pause and see what it means there (DeepL, using the sentence as context).
-- **Each side sounds different:** cave drips and a weaker signal for the team inside, room hum for control. Weak signals hiss and briefly drop out.
-- **Saved as you go:** reload or come back later and the channel waits on standby with a Resume button.
-- **Drill feed:** a fixed French/English cave rescue, used when no Claude key is set (or chosen in Settings → Feed).
+**Live demo:** https://dawn-radio.pages.dev
+
+![Dawn Radio playing a line, with the field log open beside the radio](docs/images/hero.jpg)
+
+## What it does
+
+- **A story written live.** Claude writes the next 4 radio lines at a time. Each line streams to the browser the moment it's written, so the first voice starts before the rest are done.
+- **You're on the channel.** Hold the talk key and speak (in French, English, or a mix). The characters answer you, take your ideas seriously, and quietly repeat your message back in correct French, the way radio operators confirm a call.
+- **Subtitles that follow the voice.** Every line shows French and English, and each word lights up as it's spoken, timed from ElevenLabs' character alignment.
+- **Tap any word** to pause and see what it means in that sentence (DeepL, using the full line as context).
+- **A field log that keeps itself up to date.** People, places, finds and hazards change as the story reveals them, with a timeline of key moments.
+- **It sounds like a real radio.** A Web Audio chain adds a band-pass filter, distortion, hiss, squelch bursts and beeps. Each end of the channel has its own background (cave drips, control-room hum, rain), and weak signals crackle and drop out.
+- **Picks up where you left off.** Reload or come back later and the channel waits on standby with a Resume button.
+- **Works with no keys.** Without API keys it falls back to a fixed recording, the browser's own voice, and the browser's speech recognition.
+
+![Tap a word to look it up · Hold to talk · Full transcript](docs/images/features.jpg)
+
+<p align="center"><em>Left to right: a word lookup, transmitting with push-to-talk, and the transcript.</em></p>
+
+## Built for phones too
+
+The layout scales the radio to fit any screen. On narrow screens the field log moves inside the radio's screen; on wide screens it docks beside it. Touch, mouse and keyboard all work.
+
+![Standby, a line playing, and the field log on a phone](docs/images/mobile.jpg)
+
+## Tech stack
+
+| Layer | Tools |
+| --- | --- |
+| Front end | React 19, TypeScript, Vite, Motion, Web Audio API |
+| Back end | Cloudflare Pages Functions (one router shared with the Vite dev server) |
+| AI writing | Claude via the Anthropic SDK, streamed structured output (JSON schema) |
+| Voice | ElevenLabs text-to-speech (streamed PCM with word timings) and Scribe speech-to-text |
+| Translation | DeepL |
+| Tooling | pnpm, oxlint, Wrangler, Git-based deploys |
+
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI[React UI<br/>radio, subtitles, log]
+    Engine[Conversation engine<br/>queue, pause, replay, talk]
+    Audio[Web Audio<br/>radio effects + ambience]
+  end
+  subgraph Edge[Cloudflare Pages Function]
+    Router[/api router<br/>+ rate limits/]
+  end
+  UI <--> Engine
+  Engine --> Audio
+  Engine -- "/api/dialogue (NDJSON stream)" --> Router
+  Engine -- "/api/tts/stream (NDJSON stream)" --> Router
+  Engine -- "/api/stt, /api/translate" --> Router
+  Router --> Claude[Claude]
+  Router --> Eleven[ElevenLabs]
+  Router --> DeepL[DeepL]
+```
+
+1. The engine asks `/api/dialogue` for the next batch, sending the story so far, the current field log, and anything the player said.
+2. The server streams Claude's structured JSON reply. A small scanner pulls each finished line out of the half-written JSON array and sends it to the browser as one NDJSON row, so lines arrive one by one instead of all at the end.
+3. While one line plays, the engine prepares the voice for the next line only. If the player cuts in, at most one line of voice work is wasted.
+4. `/api/tts/stream` turns ElevenLabs' streamed audio and character timings into NDJSON chunks. The browser plays the audio as it arrives and maps character timings to words for the highlight.
+5. Each line carries a field log update, applied the moment that line starts playing, so the log never gets ahead of the story.
+
+## Engineering highlights
+
+- **Low wait after you speak.** Streaming happens at every step: Claude's tokens, the lines, and the voice audio. On Claude Sonnet 5.5 with thinking off, the first reply line arrives in about 6 seconds; voice adds about 0.7 seconds.
+- **Story memory that stays consistent.** Each reply returns an updated list of facts and a short summary. These go back with the next request, so the story stays coherent over a long session without sending the whole transcript.
+- **Safe to put on a public URL.** The server only accepts known story IDs, so visitors can't send their own prompts. Player speech is treated as in-story chatter, never as instructions. Every API route has per-visitor rate limits.
+- **One API, two runtimes.** The same `handleApi(request, env)` function serves `/api` in local development (as Vite middleware) and in production (as a Cloudflare Pages Function), including streamed responses and cancel signals.
+- **Built to be reskinned.** The radio is drawn from rendered images with pixel positions in a config file, or entirely in CSS. Colors, fonts, party names, voices and the log layout all come from config, so a new story or look needs no component changes.
+- **Graceful fallbacks.** Each service is optional. `/api/config` reports what's set up, and the app picks the best available option for writing, voice and speech recognition.
 
 ## Run locally
 
@@ -29,7 +94,7 @@ Optional:
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | `claude-sonnet-5-5` replies faster (see below) |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | `claude-sonnet-5-5` replies faster |
 | `CLAUDE_EFFORT` | `low` | Lower is faster |
 | `CLAUDE_THINKING` | on | `off` turns thinking off on Claude Sonnet 5.5, for the fastest first line |
 | `ELEVENLABS_MODEL_ID` | `eleven_v4` | `eleven_v4_turbo` is faster; `eleven_multilingual_v2` ignores delivery cues |
@@ -40,8 +105,6 @@ Optional:
 **Ambience files.** The cave, room and rain sounds are generated in the browser. To use recorded ones instead, run `node --env-file=.env scripts/make-sfx.mjs` once (needs the *sound generation* permission on the ElevenLabs key); it writes `public/sfx/*.mp3`, which the app picks up automatically.
 
 **Spending.** Each visitor is limited per minute on every API route (`server/rateLimit.ts`). For a public URL, also set a monthly spend limit in the Anthropic, ElevenLabs and DeepL dashboards; those are the only hard caps.
-
-With no keys, the app still runs: drill feed, the browser's built-in voice, and the browser's speech recognition. `/api/config` shows what is set up.
 
 `pnpm preview:cf` runs the built app on Cloudflare's local runtime, the same as production.
 
@@ -56,7 +119,7 @@ With no keys, the app still runs: drill feed, the browser's built-in voice, and 
 | Transcript | Screen icon | T |
 | Close / cancel | ✕ | Esc |
 
-Talk input records your voice and sends it to ElevenLabs Scribe. Without an ElevenLabs key, it falls back to the browser's speech recognition (Chrome, Edge, Safari). With Settings → Talk input → Keyboard, the key opens a text field instead.
+Talk input records your voice and sends it to ElevenLabs Scribe. Without an ElevenLabs key, it uses the browser's speech recognition (Chrome, Edge, Safari). With Settings → Talk input → Keyboard, the key opens a text field instead.
 
 ## Deploy (Cloudflare Pages, free)
 
@@ -83,11 +146,11 @@ New secret values take effect on the next deploy (a push, or **Retry deployment*
 
 `pnpm run deploy` uploads a build straight from your machine, for when you want to skip Git.
 
-## How it fits together
+## Project structure
 
 ```
 src/
-  scenarios/          scenario data (parties, colors, voices, script)
+  scenarios/          story data (parties, colors, voices, fixed recording)
   engine/
     conversation.ts   controller: streamed batches, one-line-ahead voices, pause, replay, push-to-talk
     sources/          where lines come from: ai.ts (Claude), scripted.ts (drill), auto.ts (picks one)
@@ -105,7 +168,7 @@ src/
   theme.ts            colors, fonts, brand text
   api.ts              browser client for /api
 shared/
-  stories.ts          story bibles the AI writes from (premise, characters, events, endings)
+  stories.ts          story bibles Claude writes from (premise, characters, events, endings)
   api.ts              request/response shapes and limits
 server/               /api routes, shared by the dev server and Cloudflare
   router.ts           /api/config, rate limits, routing
@@ -115,13 +178,14 @@ server/               /api routes, shared by the dev server and Cloudflare
   rateLimit.ts        per-visitor limits
 functions/api/[[route]].ts   Cloudflare Pages Function entry
 scripts/make-sfx.mjs  one-off: recorded ambience with the ElevenLabs Sound Effects API
+docs/images/          README screenshots
 ```
 
 ### Customizing
 
-- **New scenario:** copy `src/scenarios/caveRescue.ts` and pass it to `<App data={...} />`. Party names, sides, colors and voices all come from the scenario.
+- **New story:** copy `src/scenarios/caveRescue.ts` and pass it to `<App data={...} />`. Party names, sides, colors and voices all come from this file.
 - **Field log:** `scenario.log` sets the panel title, sections and starting entries. Each line can carry a `log` update (objective, entries, timeline event), applied when that line starts playing. Leave `log` out to hide the panel.
-- **Photo skin (default):** the device is drawn from rendered images in `public/skins/nexus/`. `src/skins/nexus.ts` holds the pixel positions of the screen, lights, keys and labels. For a new skin, add images and a new config with the same shape (`PhotoSkin`), then pass it as `<App skin={...} />`.
-- **CSS device:** `<App skin={null} />` draws the device entirely in CSS. Colors and fonts come from `theme` (`RadioTheme`).
-- **Live feed for a new scenario:** add a bible to `shared/stories.ts` with the same id as the scenario. The server only accepts known story ids, so players can't send their own prompts.
+- **Photo skin (default):** the radio is drawn from rendered images in `public/skins/nexus/`. `src/skins/nexus.ts` holds the pixel positions of the screen, lights, keys and labels. For a new skin, add images and a new config with the same shape (`PhotoSkin`), then pass it as `<App skin={...} />`.
+- **CSS radio:** `<App skin={null} />` draws the radio entirely in CSS. Colors and fonts come from `theme` (`RadioTheme`).
+- **Live feed for a new story:** add a bible to `shared/stories.ts` with the same id as the story. The server only accepts known story ids.
 - **Other line sources:** implement `LineSource` (`engine/sources/types.ts`) and return it from `createSource` in `App.tsx`.
