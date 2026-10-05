@@ -2,6 +2,7 @@ import type { ChannelsLabels } from '../components/screen/ChannelsPanel'
 import type { SettingsLabels, TranscriptLabels } from '../components/screen/Panels'
 import type { LiveMode } from '../components/screen/StatusBar'
 import type { FieldTrainingLabels } from '../components/training/FieldTraining'
+import type { RecordingsLabels } from '../components/screen/RecordingsPanel'
 import type { ConversationNotices } from '../engine/conversation'
 import type { LogConfig } from '../types'
 
@@ -61,6 +62,21 @@ export interface UiText {
   settingsPanel: SettingsLabels
   channelsPanel: ChannelsLabels
   training: FieldTrainingLabels
+  /** Saving the session as a recording, and playing one back. */
+  recording: {
+    save: string
+    saving: string
+    saved: string
+    failed: string
+    play: string
+    playAgain: string
+    backToLive: string
+    /** Closing screen when a recording ran out without an ending. */
+    end: string
+    /** Eyebrow on a recording's screens, e.g. "Recording · Oct 5, 2026". */
+    eyebrow: (date: string) => string
+  }
+  recordingsPanel: RecordingsLabels
   tour: (w: TourWords) => Record<TourStop, { title: string; body: string }>
 }
 
@@ -197,8 +213,34 @@ export const en: UiText = {
     tooMany: 'Too many new channels. Wait a minute and try again.',
     declined: 'No signal for that briefing. Try describing it another way.',
     noSignal: 'No signal. Try again.',
+    recordings: 'Recordings',
   },
   training: { eyebrow: 'Field training', next: 'Next', back: 'Back', skip: 'Skip', done: 'Done', key: 'Key' },
+  recording: {
+    save: 'Save recording',
+    saving: 'Saving…',
+    saved: 'Saved',
+    failed: 'Not saved. Try again.',
+    play: 'Play recording',
+    playAgain: 'Play again',
+    backToLive: 'Back to live',
+    end: 'End of recording',
+    eyebrow: (date) => `Recording · ${date}`,
+  },
+  recordingsPanel: {
+    title: 'Recordings',
+    empty: 'No recordings yet. Save one from the transcript, or when a channel closes.',
+    loading: 'Loading…',
+    failed: 'Recordings are offline.',
+    meta: (n, time) => `${n} transmission${n === 1 ? '' : 's'} · ${time}`,
+    outcome: { success: '✓', failure: '✕', other: '·' },
+    play: 'Play',
+    delete: 'Delete',
+    confirmDelete: 'Delete this recording?',
+    cancel: 'Cancel',
+    close: 'Close',
+    backToLive: 'Back to live',
+  },
   tour: ({ target, native, talk }) => ({
     welcome: {
       title: 'Welcome to the channel',

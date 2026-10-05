@@ -3,9 +3,10 @@ import type { ApiConfig } from '../../shared/api.ts'
 import { getConfig, translate, translateDetect } from '../api'
 import type { Settings } from '../settings'
 import { Conversation, type ConversationNotices } from './conversation'
-import { clearSession, loadSession, saveSession, sessionId } from './session'
+import { clearSession, loadSession, saveSession, sessionId, type SavedSession } from './session'
 import { RadioAudio, type RadioAudioOptions } from './radioAudio'
 import { BrowserSpeech } from './speech/browser'
+import { ArchiveSpeech } from './speech/archive'
 import { ElevenLabsSpeech } from './speech/elevenlabs'
 import type { LineSource } from './sources/types'
 import type { Scenario } from '../types'
@@ -22,6 +23,8 @@ export interface UseConversationOptions {
   resume?: boolean
   /** Status messages flashed on the screen. */
   notices?: Partial<ConversationNotices>
+  /** Plays a saved recording like a tape instead of the live channel. Nothing is saved over the live session. */
+  tape?: { recording: string; session: SavedSession }
 }
 
 /** Builds the audio graph, voices and controller once, and exposes the live state. */
@@ -33,6 +36,7 @@ export function useConversation({
   ttsEndpoint = '/tts',
   resume = true,
   notices,
+  tape,
 }: UseConversationOptions) {
   const session = sessionId(scenario)
   const [config, setConfig] = useState<ApiConfig | null>(null)
@@ -49,6 +53,7 @@ export function useConversation({
       audio,
       settings,
       notices,
+      tape: !!tape,
       cloudSpeechToText: () => !!cfg.current?.stt,
       translatePlayer: (text) => {
         if (!cfg.current?.translate) return null
@@ -67,15 +72,17 @@ export function useConversation({
       voices: {
         browser: new BrowserSpeech({ rate: () => get().speechRate, volume: () => get().volume }),
         elevenlabs: new ElevenLabsSpeech(audio, { endpoint: ttsEndpoint, speed: () => get().speechRate }),
+        archive: new ArchiveSpeech(audio, { recording: tape?.recording, speed: () => get().speechRate }),
       },
     })
-    const saved = resume ? loadSession(session) : null
+    const saved = tape ? tape.session : resume ? loadSession(session) : null
     if (saved) conversation.restore(saved)
     return { conversation, audio, cfg }
   })
 
   // Save at most once a second while things change, and right away when the page is hidden.
   useEffect(() => {
+    if (tape) return
     let timer: ReturnType<typeof setTimeout> | undefined
     const save = () => {
       clearTimeout(timer)
@@ -98,7 +105,7 @@ export function useConversation({
       document.removeEventListener('visibilitychange', onHide)
       window.removeEventListener('pagehide', save)
     }
-  }, [conversation, session])
+  }, [conversation, session, tape])
 
   useEffect(() => {
     conversation.updateSettings(settings)

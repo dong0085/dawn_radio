@@ -16,6 +16,8 @@ export class StreamedClip {
   samples = 0
   done = false
   failed = false
+  /** Name of the server's recorded copy (x-audio-key), when it keeps one. */
+  archiveKey?: string
   /** Word list is fixed up front (from the text); timings fill in as they arrive. */
   readonly words: TimedWord[]
 

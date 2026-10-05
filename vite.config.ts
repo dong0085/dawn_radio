@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
+import type { R2Bucket } from './server/audio.ts'
 import type { D1Database } from './server/db.ts'
 import { handleApi, type Env } from './server/router.ts'
 
@@ -13,8 +14,8 @@ function devApi(keys: Env): Plugin {
   const connect = async (): Promise<Env> => {
     try {
       const { getPlatformProxy } = await import('wrangler')
-      const proxy = await getPlatformProxy<{ DB?: D1Database }>()
-      return { ...keys, DB: proxy.env.DB }
+      const proxy = await getPlatformProxy<{ DB?: D1Database; AUDIO?: R2Bucket }>()
+      return { ...keys, DB: proxy.env.DB, AUDIO: proxy.env.AUDIO }
     } catch (err) {
       console.warn('[dev-api] no local database:', err)
       return keys

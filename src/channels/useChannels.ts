@@ -32,6 +32,8 @@ export interface ChannelsController {
   currentId: string
   /** Fresh rows, with progress read from each channel's saved session. */
   items: () => ChannelItem[]
+  /** A made channel kept in this browser. */
+  find: (id: string) => StoredChannel | undefined
   select: (id: string) => void
   /** Asks the server for a new channel, stores it and tunes in. */
   create: (brief: ChannelBrief, signal?: AbortSignal) => Promise<void>
@@ -116,6 +118,7 @@ export function useChannels(preset: Preset) {
         status: status(c.id),
       })),
     ],
+    find: (id) => list.find((c) => c.id === id),
     select,
     create: async (brief, signal) => {
       const signed: SignedChannel = await createChannel(brief, signal)

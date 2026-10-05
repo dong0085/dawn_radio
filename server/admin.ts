@@ -23,10 +23,11 @@ import type {
 } from '../shared/admin.ts'
 import type { ChannelDisplay } from '../shared/channels.ts'
 import { stories, type StoryBible } from '../shared/stories.ts'
+import { deletePrefix, type AudioEnv } from './audio.ts'
 import { CHANNEL_ID, SESSION_ID, baseChannel, dayOf, isPlayerId, type D1Database, type DbEnv } from './db.ts'
 import { json } from './http.ts'
 
-export interface AdminEnv extends DbEnv {
+export interface AdminEnv extends DbEnv, AudioEnv {
   /** At least 16 characters; shorter tokens leave the admin page off. */
   ADMIN_TOKEN?: string
 }
@@ -107,8 +108,10 @@ export async function handleAdmin(request: Request, env: AdminEnv, path: string)
         db.prepare(`DELETE FROM sessions WHERE ${baseChannel('channel')} IN (SELECT id FROM channels WHERE owner = ?)`).bind(a),
         db.prepare('DELETE FROM channels WHERE owner = ?').bind(a),
         db.prepare('DELETE FROM usage WHERE player = ?').bind(a),
+        db.prepare('DELETE FROM recordings WHERE player = ?').bind(a),
         db.prepare('DELETE FROM players WHERE id = ?').bind(a),
       ])
+      if (env.AUDIO) await Promise.all([deletePrefix(env.AUDIO, `tmp/${a}/`), deletePrefix(env.AUDIO, `saved/${a}/`)])
       return json({ ok: true })
     }
   }

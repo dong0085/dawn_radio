@@ -59,6 +59,14 @@ export interface Line {
   pause?: LinePause
   /** Changes to the log, applied when this line starts playing. */
   log?: LogUpdate
+  /** Recorded audio of this line, when it plays again (see TranscriptEntry.audio). */
+  audio?: string
+  /** Plays again only this far (seconds): where the player cut in. */
+  cutAt?: number
+  /** Plays again after exactly this much silence (ms), as it first aired. */
+  gapMs?: number
+  /** Player lines played again: how long the transmission lasted (seconds). */
+  duration?: number
 }
 
 // ---- Log: what has happened and what is going on now ----
@@ -188,4 +196,14 @@ export interface TranscriptEntry {
   interrupted?: boolean
   /** Player lines: the message as natural target-language speech. */
   rendering?: string
+  /** Name of the recorded voice audio, so the line can play again exactly as it aired. */
+  audio?: string
+  /** Seconds of silence on the channel before this line. */
+  gap?: number
+  /** Seconds into the line where the player cut in. */
+  cutAt?: number
+  /** Player lines: seconds the transmission lasted. */
+  duration?: number
+  /** Changes to the log this line made, so a replay can make them again. */
+  log?: LogUpdate
 }

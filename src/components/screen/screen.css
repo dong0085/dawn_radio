@@ -1683,3 +1683,14 @@ button.log-timeline__row:hover {
   0%, 100% { transform: scaleY(0.25); opacity: 0.5; }
   50% { transform: scaleY(1); opacity: 1; }
 }
+
+/* recordings: same rows as the channel list */
+.channels__recordings {
+  margin-top: 6px;
+  border-style: solid;
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+.recordings__live {
+  margin-bottom: 10px;
+}

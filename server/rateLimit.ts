@@ -17,6 +17,9 @@ export const PER_MINUTE: Record<string, number> = {
   '/sessions': 60,
   '/channels': 20,
   '/sync': 5,
+  '/recordings': 30,
+  // One request per line when a recording plays.
+  '/audio': 240,
   // Also limits guessing the admin token.
   '/admin': 120,
 }

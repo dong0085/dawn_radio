@@ -102,6 +102,8 @@ export interface TranscriptPanelProps extends TranscriptViewProps {
   /** Past lines are playing again: shows the way back to live. */
   replaying?: boolean
   onGoLive?: () => void
+  /** More keys for the header, e.g. saving a recording. */
+  actions?: ReactNode
 }
 
 export interface TranscriptLabels {
@@ -140,10 +142,12 @@ function TranscriptActions({
   onToggleTranslation,
   replaying,
   onGoLive,
+  actions,
   labels: l,
-}: Pick<TranscriptPanelProps, 'showTranslation' | 'onToggleTranslation' | 'replaying' | 'onGoLive'> & { labels: TranscriptLabels }) {
+}: Pick<TranscriptPanelProps, 'showTranslation' | 'onToggleTranslation' | 'replaying' | 'onGoLive' | 'actions'> & { labels: TranscriptLabels }) {
   return (
     <>
+      {actions}
       {replaying && onGoLive && (
         <button type="button" className="chip chip--primary" onClick={onGoLive}>
           {l.backToLive}

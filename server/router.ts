@@ -7,17 +7,18 @@ import { json } from './http.ts'
 import { countUsage } from './usage.ts'
 import { rateLimit } from './rateLimit.ts'
 import { handleStt, type SttEnv } from './stt.ts'
+import { handleRecordings, type RecordingsEnv } from './recordings.ts'
 import { handleSync } from './sync.ts'
 import { handleTranslate, type TranslateEnv } from './translate.ts'
 import { handleTts, type TtsEnv } from './tts.ts'
 
-export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv, AdminEnv {}
+export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv, AdminEnv, RecordingsEnv {}
 
 /** Routes whose requests are counted per player and day (they cost money). */
 const COUNTED = new Set(['/dialogue', '/channel', '/tts', '/tts/stream', '/stt', '/translate'])
 
 /** Paths with ids share one rate limit, e.g. /sessions/cave-rescue -> /sessions. */
-const routeOf = (path: string) => (/^\/(admin|sessions|channels)(\/|$)/.exec(path)?.[0].replace(/\/$/, '') ?? path)
+const routeOf = (path: string) => (/^\/(admin|sessions|channels|recordings|audio)(\/|$)/.exec(path)?.[0].replace(/\/$/, '') ?? path)
 
 /**
  * All /api routes. Used by the Cloudflare Pages Function in production
@@ -52,15 +53,16 @@ export async function handleApi(request: Request, env: Env, waitUntil: WaitUntil
   try {
     if (route === '/admin') return await handleAdmin(request, env, path)
     if (route === '/sessions' || route === '/channels' || path === '/sync') return await handleSync(request, env, path, player)
+    if (route === '/recordings' || route === '/audio') return await handleRecordings(request, env, path, player)
     switch (path) {
       case '/dialogue':
         return await handleDialogue(request, env)
       case '/channel':
         return await handleChannel(request, env, player)
       case '/tts':
-        return await handleTts(request, env)
+        return await handleTts(request, env, {}, { player, waitUntil })
       case '/tts/stream':
-        return await handleTts(request, env, { stream: true })
+        return await handleTts(request, env, { stream: true }, { player, waitUntil })
       case '/stt':
         return await handleStt(request, env)
       case '/translate':

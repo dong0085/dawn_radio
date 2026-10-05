@@ -21,7 +21,11 @@ import { AutoSource } from './engine/sources/auto'
 import { getConfig, translate } from './api'
 import { stories } from '../shared/stories.ts'
 import { CHANNEL_LANGUAGES, NATIVE_LANGUAGES } from '../shared/channels.ts'
-import { languageLabel, ownLanguageLabel } from './components/screen/format'
+import { formatElapsed, languageLabel, ownLanguageLabel } from './components/screen/format'
+import { RecordingsPanel } from './components/screen/RecordingsPanel'
+import { deleteRecording, listRecordings, saveRecording } from './recordings'
+import type { SavedSession } from './engine/session'
+import type { LineSource } from './engine/sources/types'
 import { uiText, type UiText } from './i18n'
 import type { TourStop } from './i18n/text'
 import { useConversation } from './engine/useConversation'
@@ -53,11 +57,28 @@ export interface AppProps {
   recordedIn?: string
   /** The radio's own wording; defaults to the player's language. */
   text?: UiText
+  /** Plays a saved recording like a tape instead of the live channel. */
+  tape?: Tape
+  /** Opens a saved recording (the recordings list is hidden without it). */
+  onPlayRecording?: (id: string) => void
+  /** Leaves a recording for the live channel. */
+  onBackToLive?: () => void
 }
 
-type Overlay = 'log' | 'transcript' | 'settings' | 'channels' | 'new-channel'
+/** A saved recording to play back. */
+export interface Tape {
+  id: string
+  title: string
+  savedAt: number
+  session: SavedSession
+}
 
-export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels, recordedIn, text }: AppProps) {
+type Overlay = 'log' | 'transcript' | 'settings' | 'channels' | 'new-channel' | 'recordings'
+
+/** A tape writes no new lines. */
+const silentSource: LineSource = { next: async () => ({ lines: [] }) }
+
+export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels, recordedIn, text, tape, onPlayRecording, onBackToLive }: AppProps) {
   const { scenario } = data
   const t = text ?? uiText(scenario.nativeLang)
   const targetName = languageLabel(scenario.targetLang, scenario.nativeLang)
@@ -70,10 +91,13 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     scenario,
     settings,
     notices: t.notices,
+    tape: tape && { recording: tape.id, session: tape.session },
     // Live feed: Claude writes the lines (when the server has a key); drill: the fixed recording.
     createSource: (getSettings) =>
-      // A channel made from a briefing has no recording, so it is always live.
-      'channel' in data
+      tape
+        ? silentSource
+        : // A channel made from a briefing has no recording, so it is always live.
+          'channel' in data
         ? new AiSource({ channel: data.channel, ...languages })
         : new AutoSource(async () => {
             const config = await getConfig()
@@ -212,7 +236,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onReplay: () => conversation.replay(),
     // Docked panels fold and unfold instead.
     onTranscript: () => (transcriptDocked ? toggleDock('transcript') : toggle('transcript')),
-    onChannels: () => channels && toggle('channels'),
+    onChannels: () => (tape ? toggle('recordings') : channels && toggle('channels')),
     onLog: () => (docked ? toggleDock('log') : scenario.log && toggle('log')),
     onEscape: () => (transmitting ? conversation.cancelTransmit() : wordCard ? closeWord() : setOverlay(null)),
   })
@@ -237,6 +261,34 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
 
   const showTranslation = settings.showTranslation || revealedLine === current?.line.id
 
+  // Saving the session as a recording, with its audio.
+  const [save, setSave] = useState<{ status: 'idle' | 'saving' | 'saved' | 'failed'; lines: number }>({ status: 'idle', lines: 0 })
+  const savedNow = save.status === 'saved' && save.lines === state.transcript.length
+  const saveSession = async () => {
+    const snap = conversation.snapshot()
+    if (!snap) return
+    setSave({ status: 'saving', lines: snap.transcript.length })
+    try {
+      await saveRecording(snap, scenario.title)
+      setSave({ status: 'saved', lines: snap.transcript.length })
+    } catch (err) {
+      console.warn('[recording] not saved', err)
+      setSave((s) => ({ ...s, status: 'failed' }))
+    }
+  }
+  const saveKey = !tape && config?.db && state.transcript.length > 0 && (
+    <button type="button" className={`chip${savedNow ? ' is-on' : ''}`} disabled={save.status === 'saving' || savedNow} onClick={saveSession}>
+      {save.status === 'saving' ? t.recording.saving : savedNow ? t.recording.saved : save.status === 'failed' ? t.recording.failed : t.recording.save}
+    </button>
+  )
+  /** The tape has been played at least once, so stopping shows its end. */
+  const [tapePlayed, setTapePlayed] = useState(false)
+  const playTape = () => {
+    setTapePlayed(true)
+    const first = state.transcript[0]
+    if (first) conversation.replayFrom(first.id)
+  }
+
   const content = (() => {
     if (transmitting) {
       return (
@@ -257,6 +309,31 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
         />
       )
     }
+    if (tape && !state.replaying && phase !== 'running') {
+      const ended = tapePlayed && state.ending
+      const eyebrow = t.recording.eyebrow(new Intl.DateTimeFormat(scenario.nativeLang, { dateStyle: 'medium' }).format(tape.savedAt))
+      return (
+        <MessageView
+          key={tapePlayed ? 'tape-end' : 'tape'}
+          eyebrow={eyebrow}
+          title={tapePlayed ? (state.ending?.title ?? t.recording.end) : tape.title}
+          tone={ended ? (state.ending!.outcome === 'success' ? 'var(--led-rx)' : state.ending!.outcome === 'failure' ? 'var(--led-tx)' : undefined) : undefined}
+          body={tapePlayed ? state.ending?.summary : t.recordingsPanel.meta(state.transcript.length, formatElapsed(tape.session.elapsed))}
+          actions={
+            <>
+              {onBackToLive && (
+                <button type="button" className="chip" onClick={onBackToLive}>
+                  {t.recording.backToLive}
+                </button>
+              )}
+              <button type="button" className="chip chip--primary" onClick={playTape}>
+                {tapePlayed ? t.recording.playAgain : t.recording.play}
+              </button>
+            </>
+          }
+        />
+      )
+    }
     if (phase === 'standby' && state.resumed) {
       const last = [...state.transcript].reverse().find((e) => e.speaker !== PLAYER_ID)
       return (
@@ -270,6 +347,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
               <button type="button" className="chip" onClick={restart}>
                 {t.startFresh}
               </button>
+              {saveKey}
               <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
                 {t.resume}
               </button>
@@ -315,6 +393,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
                   {t.transcript}
                 </button>
               )}
+              {saveKey}
               <button type="button" className="chip chip--primary" onClick={restart}>
                 {t.rejoinChannel}
               </button>
@@ -372,7 +451,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       lightColor: theme.lights.talk,
       label: talkMode === 'toggle' ? t.talk.tap : t.talk.hold,
       activeLabel: talkMode === 'toggle' ? t.talk.cancel : t.talk.transmitting,
-      disabled: phase === 'ended',
+      disabled: phase === 'ended' || !!tape,
       onPress: press,
       onRelease: release,
     },
@@ -410,14 +489,16 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     targetLang: scenario.targetLang,
     onPlayFrom: playFrom,
     replaying: state.replaying,
-    onGoLive: () => conversation.goLive(),
+    // On a tape, "back to live" leaves the recording.
+    onGoLive: tape ? onBackToLive : () => conversation.goLive(),
+    actions: saveKey,
     labels: t.transcriptPanel,
   }
 
   const screen = (
     <div className={`screen${phase !== 'standby' ? ' screen--booting' : ''}`} key={phase === 'standby' ? 'off' : 'on'}>
       <StatusBar
-        onTitleClick={channels ? () => toggle('channels') : undefined}
+        onTitleClick={tape ? () => toggle('recordings') : channels ? () => toggle('channels') : undefined}
         titleLabel={t.channels}
         incident={scenario.incident}
         title={scenario.title}
@@ -525,7 +606,24 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             // The radio on this channel would save over a wipe, so it starts fresh instead.
             onClear={(id) => (id === channels.currentId ? restart() : channels.clear(id))}
             onClose={() => setOverlay(null)}
+            onRecordings={config?.db && onPlayRecording ? () => setOverlay('recordings') : undefined}
             labels={t.channelsPanel}
+          />
+        )}
+        {overlay === 'recordings' && onPlayRecording && (
+          <RecordingsPanel
+            key="recordings"
+            load={listRecordings}
+            onPlay={(id) => {
+              setOverlay(null)
+              onPlayRecording(id)
+            }}
+            onDelete={deleteRecording}
+            onClose={() => setOverlay(null)}
+            playingId={tape?.id}
+            onBackToLive={onBackToLive}
+            locale={scenario.nativeLang}
+            labels={t.recordingsPanel}
           />
         )}
         {overlay === 'new-channel' && channels && (

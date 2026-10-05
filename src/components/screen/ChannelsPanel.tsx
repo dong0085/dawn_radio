@@ -62,6 +62,8 @@ export interface ChannelsLabels {
   tooMany: string
   declined: string
   noSignal: string
+  /** Opens the saved recordings. */
+  recordings: string
 }
 
 const defaultChannelsLabels: ChannelsLabels = {
@@ -117,6 +119,7 @@ const defaultChannelsLabels: ChannelsLabels = {
   tooMany: 'Too many new channels. Wait a minute and try again.',
   declined: 'No signal for that briefing. Try describing it another way.',
   noSignal: 'No signal. Try again.',
+  recordings: 'Recordings',
 }
 
 function statusText(status: ChannelStatus, l: ChannelsLabels) {
@@ -138,11 +141,13 @@ export interface ChannelsPanelProps {
   onDelete: (id: string) => void
   onClear: (id: string) => void
   onClose: () => void
+  /** Opens the saved recordings; the key is hidden without it. */
+  onRecordings?: () => void
   labels?: Partial<ChannelsLabels>
 }
 
 /** The radio's channel memory: tune in, make a new channel, delete one. */
-export function ChannelsPanel({ items, currentId, live, nativeLang, canCreate, onSelect, onNew, onDelete, onClear, onClose, labels }: ChannelsPanelProps) {
+export function ChannelsPanel({ items, currentId, live, nativeLang, canCreate, onSelect, onNew, onDelete, onClear, onClose, onRecordings, labels }: ChannelsPanelProps) {
   const l = { ...defaultChannelsLabels, ...labels }
   /** Row waiting for its second tap. */
   const [confirming, setConfirming] = useState<string | null>(null)
@@ -208,6 +213,11 @@ export function ChannelsPanel({ items, currentId, live, nativeLang, canCreate, o
         + {l.newChannel}
         {!canCreate && <small>{l.offline}</small>}
       </button>
+      {onRecordings && (
+        <button type="button" className="channels__new channels__recordings" onClick={onRecordings}>
+          {l.recordings}
+        </button>
+      )}
     </ScreenPanel>
   )
 }

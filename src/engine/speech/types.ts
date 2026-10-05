@@ -20,6 +20,8 @@ export interface PreparedSpeech {
   duration: number
   /** True when the audio goes through the radio filter (and drives the waveform). */
   filtered: boolean
+  /** Name of the server's recorded copy, when it kept one. */
+  archiveKey?: string
   play(): Playback
 }
 

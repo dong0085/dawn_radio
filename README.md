@@ -126,6 +126,9 @@ A Cloudflare D1 database (SQLite) keeps a server copy of what people do. The bro
 | `channels` | Every channel made from a briefing: the briefing, the signed bible, who made it, and whether it is off the air |
 | `sessions` | Each player's saved progress per channel (transcript, field log, story memory), as the browser saves it |
 | `usage` | Requests per day, player and route, to see what the site costs |
+| `recordings` | Sessions people saved: a copy of the transcript at the time, played back with its audio |
+
+**Voice audio** goes to a Cloudflare R2 bucket (`AUDIO`). Every line is copied there as it streams (`tmp/`, deleted after a day by a bucket rule), so a line can play again without a new ElevenLabs request. **Save recording** copies a session's lines to `saved/`, kept until the recording is deleted. A recording plays back like a tape: the same silences between transmissions, lines cut off where the player broke in, and the player's own transmissions as the push-to-talk beeps around a silence of the same length (their voice is not kept). Who may save is decided in one place, `canSave` in `server/recordings.ts`: everyone for now, paid accounts later.
 
 Set it up once:
 
@@ -133,6 +136,8 @@ Set it up once:
 pnpm exec wrangler d1 create dawn-radio      # put the database_id it prints into wrangler.toml
 pnpm db:migrate                              # create the tables (pnpm db:migrate:local for pnpm dev)
 pnpm exec wrangler pages secret put ADMIN_TOKEN --project-name dawn-radio
+pnpm exec wrangler r2 bucket create dawn-radio-audio
+pnpm exec wrangler r2 bucket lifecycle add dawn-radio-audio expire-unsaved tmp/ --expire-days 1 -y
 ```
 
 **Admin page** at `/admin`, signed in with `ADMIN_TOKEN` (16+ characters; add it to `.env` for `pnpm dev`):
@@ -221,6 +226,8 @@ server/               /api routes, shared by the dev server and Cloudflare
   db.ts               D1 database: player ids, stored channels and sessions, usage counts
   sync.ts             /api/sessions, /api/channels, /api/sync: the browser's copy goes to the database
   admin.ts            /api/admin: overview, channels, sessions, listeners (needs ADMIN_TOKEN)
+  audio.ts            R2 voice audio: a copy of each line for a day, and saved recordings
+  recordings.ts       /api/recordings, /api/audio: save, list, play back and delete recordings
 migrations/           database tables (pnpm db:migrate)
 admin.html, src/admin/  the admin page
 functions/api/[[route]].ts   Cloudflare Pages Function entry

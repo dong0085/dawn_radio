@@ -91,6 +91,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
         return clip.duration
       },
       filtered: true,
+      archiveKey: clip.archiveKey,
       play: () => playStream(audio, clip, this.speed),
     }
   }
@@ -113,8 +114,10 @@ export class ElevenLabsSpeech implements SpeechProvider {
         const res = await apiFetch(`${this.opts.endpoint ?? '/tts'}/stream`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(this.body(line, voiceId, lang)),
+          // The server keeps a copy, so the line can play again (and be saved) without a new request.
+          body: JSON.stringify({ ...this.body(line, voiceId, lang), archive: true }),
         })
+        clip.archiveKey = res.headers.get('x-audio-key') ?? undefined
         await readNdjson<StreamChunk>(res, (chunk) => {
           if (chunk.alignment) clip.pushAlignment(chunk.alignment)
           if (chunk.audio_base64) clip.pushPcm(decodeBase64(chunk.audio_base64))
@@ -146,7 +149,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
 }
 
 /** Plays a whole clip at `speed`; positions stay in seconds of the original clip. */
-function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: number): Playback {
+export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: number): Playback {
   const ctx = audio.context
   const buffer = speed === 1 ? original : stretchBuffer(ctx, original, speed)
   let offset = 0

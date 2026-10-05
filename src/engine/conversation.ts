@@ -53,7 +53,13 @@ export interface ConversationOptions {
   scenario: Scenario
   source: LineSource
   audio: RadioAudio
-  voices: { browser: SpeechProvider; elevenlabs?: SpeechProvider }
+  /** archive: plays lines again from the server's recorded audio (see speech/archive.ts). */
+  voices: { browser: SpeechProvider; elevenlabs?: SpeechProvider; archive?: SpeechProvider & { handles(line: Line): boolean } }
+  /**
+   * Plays a saved recording like a tape: every line in order (the player's too), with the silences
+   * and cut-ins as they aired, then stops. Nothing new is written and the player can't transmit.
+   */
+  tape?: boolean
   settings: Settings
   /** True when server speech-to-text is set up (otherwise the browser recognizer is used). */
   cloudSpeechToText?: () => boolean
@@ -159,6 +165,9 @@ export class Conversation {
   private replayQueue: QueueItem[] = []
   /** When the channel last went quiet (a line or the player's transmission ended), from performance.now(). */
   private quietSince = 0
+  /** When the player's current transmission started (performance.now()), and the silence before it (s). */
+  private txStartedAt = 0
+  private txGap = 0
   private gapTimer: ReturnType<typeof setTimeout> | undefined
   private noticeTimer: ReturnType<typeof setTimeout> | undefined
   private raf = 0
@@ -208,6 +217,8 @@ export class Conversation {
 
   start() {
     if (this.state.phase === 'running') return
+    // A tape plays from the top.
+    if (this.opts.tape && !this.replayQueue.length && this.state.transcript[0]) return this.replayFrom(this.state.transcript[0].id)
     this.opts.audio.ensure()
     this.opts.voices.browser.unlock?.()
     this.startedAt = performance.now() - this.resumeElapsed * 1000
@@ -260,10 +271,10 @@ export class Conversation {
     if (this.isTransmitting()) return
     const at = this.state.transcript.findIndex((e) => e.id === lineId)
     if (at < 0) return
-    // The player's own lines have no audio.
+    // The player's own lines have no audio; a tape keeps them as silent transmissions.
     const items = this.state.transcript
       .slice(at)
-      .filter((e) => e.speaker !== PLAYER_ID)
+      .filter((e) => this.opts.tape || e.speaker !== PLAYER_ID)
       .map((e) => this.pastItem(e))
     if (!items.length) return
     this.opts.audio.ensure()
@@ -274,6 +285,8 @@ export class Conversation {
     this.replayQueue = items
     this.quietSince = 0
     this.set({ replaying: true, paused: false })
+    // From the top, a tape fills the log in again as it plays.
+    if (this.opts.tape && at === 0) this.set({ log: initialLog(this.opts.scenario.log?.initial) })
     if (this.state.phase === 'standby') this.start()
     else this.advance()
   }
@@ -293,11 +306,14 @@ export class Conversation {
   }
 
   startTransmit(mode: InputMode) {
-    if (this.state.phase === 'ended' || this.isTransmitting()) return
+    if (this.opts.tape || this.state.phase === 'ended' || this.isTransmitting()) return
     if (this.state.phase === 'standby') this.start()
     const cloud = mode === 'voice' && !!this.opts.cloudSpeechToText?.() && typeof MediaRecorder !== 'undefined'
     if (mode === 'voice' && !cloud && !recognitionSupported()) mode = 'keyboard'
 
+    // Cutting in leaves no silence; otherwise it's the wait since the channel went quiet.
+    this.txStartedAt = performance.now()
+    this.txGap = this.playback ? 0 : Math.min(5, Math.max(0, (this.txStartedAt - this.quietSince) / 1000))
     this.interrupt()
     this.opts.audio.beep('tx-start')
     this.set({ activity: 'transmitting', onAir: PLAYER_ID, txText: '', txMode: mode, notice: null })
@@ -345,7 +361,13 @@ export class Conversation {
       return
     }
 
-    this.addTranscript({ id: `p${Date.now()}`, speaker: PLAYER_ID, segments: [{ text, translation: '' }] })
+    this.addTranscript({
+      id: `p${Date.now()}`,
+      speaker: PLAYER_ID,
+      segments: [{ text, translation: '' }],
+      duration: Math.round((this.quietSince - this.txStartedAt) / 100) / 10,
+      gap: Math.round(this.txGap * 10) / 10,
+    })
     const playerId = this.state.transcript[this.state.transcript.length - 1].id
     this.opts
       .translatePlayer?.(text)
@@ -456,6 +478,11 @@ export class Conversation {
     if (s.paused || this.playback || this.isTransmitting()) return
     if (this.replayQueue.length) return this.advanceReplay()
     if (s.replaying) this.endReplay()
+    // The tape ran out: it stops instead of going live.
+    if (this.opts.tape) {
+      if (s.phase !== 'standby') this.set({ phase: 'ended', activity: 'idle', onAir: null, current: null })
+      return
+    }
     if (s.phase !== 'running') return
     clearTimeout(this.gapTimer)
 
@@ -497,7 +524,8 @@ export class Conversation {
       this.prepare(item).then(() => epoch === this.epoch && this.advance())
       return
     }
-    const wait = this.quietSince + this.gaps.reply[0] - performance.now()
+    // The silence the line first aired after, when it was recorded.
+    const wait = this.quietSince + (item.line.gapMs ?? this.gaps.reply[0]) - performance.now()
     if (wait > 0) {
       if (this.state.activity !== 'idle') this.set({ activity: 'idle' })
       this.gapTimer = setTimeout(() => this.advance(), wait)
@@ -517,7 +545,16 @@ export class Conversation {
   private pastItem(entry: TranscriptEntry): QueueItem {
     let item = this.played.get(entry.id)
     if (!item) {
-      item = this.makeItem({ id: entry.id, speaker: entry.speaker, segments: entry.segments })
+      item = this.makeItem({
+        id: entry.id,
+        speaker: entry.speaker,
+        segments: entry.segments,
+        audio: entry.audio,
+        cutAt: entry.cutAt,
+        gapMs: entry.gap !== undefined ? entry.gap * 1000 : undefined,
+        duration: entry.duration,
+        log: entry.log,
+      })
       this.played.set(entry.id, item)
     }
     return item
@@ -600,10 +637,9 @@ export class Conversation {
     if (item.prepared) return item.prepared
     const party = this.opts.scenario.parties.find((p) => p.id === item.line.speaker)
     const lang = this.opts.scenario.targetLang
-    const { browser, elevenlabs } = this.opts.voices
+    const { browser, elevenlabs, archive } = this.opts.voices
     const engine = this.pickEngine()
-
-    item.prepared =
+    const live = () =>
       engine === 'elevenlabs' && elevenlabs
         ? elevenlabs.prepare(item.line, party, lang).catch((err) => {
             console.warn('[conversation] ElevenLabs failed, using browser voice', err)
@@ -611,6 +647,14 @@ export class Conversation {
             return browser.prepare(item.line, party, lang)
           })
         : browser.prepare(item.line, party, lang)
+
+    // A line that already aired plays from its recording when the server kept one.
+    item.prepared = archive?.handles(item.line)
+      ? archive.prepare(item.line, party, lang).catch((err) => {
+          console.warn('[conversation] recorded audio unavailable, voicing the line again', err)
+          return live()
+        })
+      : live()
     item.prepared.then((p) => (item.ready = p)).catch(() => undefined)
     return item.prepared
   }
@@ -635,12 +679,22 @@ export class Conversation {
     if (!replay) {
       this.lastItem = item
       this.played.set(item.line.id, item)
-      this.addTranscript({ id: item.line.id, speaker: item.line.speaker, segments: item.line.segments })
+      this.addTranscript({
+        id: item.line.id,
+        speaker: item.line.speaker,
+        segments: item.line.segments,
+        audio: speech.archiveKey,
+        gap: item.gap !== undefined && this.state.transcript.length ? Math.round(item.gap / 100) / 10 : undefined,
+        log: item.line.log,
+      })
       if (item.line.log) {
         this.set({ log: applyLogUpdate(this.state.log, item.line.log, { at: this.elapsed(), lineId: item.line.id }) })
         const notice = this.opts.scenario.log?.updatedNotice
         if (notice) this.flash(notice, 2500)
       }
+    } else if (this.opts.tape && item.line.log) {
+      // A tape makes the log changes again as it plays.
+      this.set({ log: applyLogUpdate(this.state.log, item.line.log, { at: this.elapsed(), lineId: item.line.id }) })
     }
     this.opts.audio.carrierOn(this.carrierFor(item.line))
     this.set({
@@ -694,8 +748,9 @@ export class Conversation {
     this.batchAbort = null
     if (this.playback && this.playingItem && !this.state.current?.replay) {
       const id = this.playingItem.line.id
+      const cutAt = Math.round(this.playback.position() * 100) / 100
       this.set({
-        transcript: this.state.transcript.map((e) => (e.id === id ? { ...e, interrupted: true } : e)),
+        transcript: this.state.transcript.map((e) => (e.id === id ? { ...e, interrupted: true, cutAt } : e)),
       })
     }
     if (this.playback) this.opts.audio.carrierOff()

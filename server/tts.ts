@@ -1,4 +1,6 @@
 import { LIMITS, TTS_STREAM_SAMPLE_RATE } from '../shared/api.ts'
+import { archiveStream, audioKey, tmpKey, type AudioEnv } from './audio.ts'
+import type { WaitUntil } from './db.ts'
 import { json } from './http.ts'
 
 /**
@@ -7,12 +9,14 @@ import { json } from './http.ts'
  *   GET  /api/tts         -> { enabled: boolean }
  *   POST /api/tts         { text, voiceId, languageCode?, delivery? }  (text may hold [pause] tags)
  *                         -> one JSON object: audio_base64 (mp3) + character alignment
- *   POST /api/tts/stream  same body
+ *   POST /api/tts/stream  same body, plus archive?: true
  *                         -> newline-delimited JSON chunks: audio_base64 (16-bit PCM) + alignment
+ *                            With archive (and the AUDIO bucket), a copy of the line is kept for a day and
+ *                            the x-audio-key header names it (see audio.ts).
  */
 
 
-export interface TtsEnv {
+export interface TtsEnv extends AudioEnv {
   ELEVENLABS_API_KEY?: string
   /** e.g. eleven_multilingual_v2 (default) or eleven_flash_v2_5 (faster, cheaper). */
   ELEVENLABS_MODEL_ID?: string
@@ -24,11 +28,19 @@ interface TtsBody {
   text?: string
   voiceId?: string
   languageCode?: string
+  /** Keep a copy of the line, so it can play again later. */
+  archive?: boolean
+}
+
+/** Who asked, and how to finish work after the response has gone out. */
+export interface TtsContext {
+  player?: string | null
+  waitUntil?: WaitUntil
 }
 
 const MAX_CHARS = LIMITS.ttsChars
 
-export async function handleTts(request: Request, env: TtsEnv, { stream = false } = {}): Promise<Response> {
+export async function handleTts(request: Request, env: TtsEnv, { stream = false } = {}, ctx: TtsContext = {}): Promise<Response> {
   const key = env.ELEVENLABS_API_KEY
   if (request.method === 'GET') return json({ enabled: !!key })
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -68,7 +80,15 @@ export async function handleTts(request: Request, env: TtsEnv, { stream = false 
     const detail = await upstream.text()
     return json({ error: 'ElevenLabs request failed', status: upstream.status, detail: detail.slice(0, 500) }, 502)
   }
-  return new Response(upstream.body, {
-    headers: { 'content-type': stream ? 'application/x-ndjson' : 'application/json', 'cache-control': 'no-store' },
-  })
+  const headers: Record<string, string> = { 'content-type': stream ? 'application/x-ndjson' : 'application/json', 'cache-control': 'no-store' }
+  let out = upstream.body
+  const bucket = env.AUDIO
+  if (stream && body.archive && bucket && ctx.player && ctx.waitUntil && out) {
+    const name = await audioKey([model, voiceId, tag + spoken])
+    const [toClient, toArchive] = out.tee()
+    out = toClient
+    headers['x-audio-key'] = name
+    ctx.waitUntil(archiveStream(bucket, tmpKey(ctx.player, name), toArchive, TTS_STREAM_SAMPLE_RATE).catch((err) => console.warn('[tts] not archived', err)))
+  }
+  return new Response(out, { headers })
 }
