@@ -1,4 +1,5 @@
 import type { LogState, ScenarioEnding, TranscriptEntry } from '../types'
+import { dropSession, queueSession } from '../sync'
 
 /** Everything needed to pick a channel back up after a reload. */
 export interface SavedSession {
@@ -35,12 +36,17 @@ export function saveSession(session: SavedSession) {
   } catch {
     /* storage full or blocked; the session just won't survive a reload */
   }
+  queueSession(session)
 }
 
 export function clearSession(scenarioId: string) {
+  let existed = true
   try {
+    existed = localStorage.getItem(key(scenarioId)) !== null
     localStorage.removeItem(key(scenarioId))
   } catch {
     /* ignore */
   }
+  // A fresh start clears every second until the first line; only a real removal reaches the server.
+  if (existed) dropSession(scenarioId)
 }

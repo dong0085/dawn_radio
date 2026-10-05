@@ -1,4 +1,5 @@
 import { handleApi, type Env } from '../../server/router.ts'
 
 // Cloudflare Pages Function: every /api/* request.
-export const onRequest = (context: { request: Request; env: Env }) => handleApi(context.request, context.env)
+export const onRequest = (context: { request: Request; env: Env; waitUntil: (p: Promise<unknown>) => void }) =>
+  handleApi(context.request, context.env, (p) => context.waitUntil(p))

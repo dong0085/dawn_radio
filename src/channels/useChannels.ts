@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChannelBrief, SignedChannel } from '../../shared/channels.ts'
 import { createChannel } from '../api'
 import { clearSession, loadSession } from '../engine/session'
+import { removeChannel } from '../sync'
 import type { Scenario } from '../types'
 import { channelLabel, nextChannelNumber } from './build'
 import { loadChannels, loadCurrentId, saveChannels, saveCurrentId, type StoredChannel } from './store'
@@ -115,6 +116,7 @@ export function useChannels(preset: Preset) {
     remove: (id) => {
       if (id === preset.scenario.id) return
       update(list.filter((c) => c.id !== id))
+      removeChannel(id)
       clearSession(id)
       toClear.current.push(id)
       if (id === currentId) select(preset.scenario.id)

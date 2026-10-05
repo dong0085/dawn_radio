@@ -17,9 +17,10 @@ import {
   type SignedChannel,
 } from '../shared/channels.ts'
 import type { Outcome, StoryBible, StoryParty } from '../shared/stories.ts'
+import { insertChannel, type DbEnv } from './db.ts'
 import { json } from './http.ts'
 
-export interface ChannelEnv {
+export interface ChannelEnv extends DbEnv {
   ANTHROPIC_API_KEY?: string
   CLAUDE_MODEL?: string
   /** Effort for writing a new channel (default medium: it happens once, so quality beats speed). */
@@ -264,7 +265,7 @@ export function buildChannel(out: ModelChannel, brief: ChannelBrief): Omit<Signe
 }
 
 /** POST /api/channel { about, role?, tension?, targetLang, nativeLang, level } -> SignedChannel */
-export async function handleChannel(request: Request, env: ChannelEnv): Promise<Response> {
+export async function handleChannel(request: Request, env: ChannelEnv, player: string | null = null): Promise<Response> {
   if (!env.ANTHROPIC_API_KEY) return json({ error: 'ANTHROPIC_API_KEY is not set' }, 503)
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
@@ -317,7 +318,10 @@ export async function handleChannel(request: Request, env: ChannelEnv): Promise<
       /* invalid JSON */
     }
     if (!built) return json({ error: 'The channel came out garbled' }, 502)
-    return json({ ...built, sig: await signBible(env, built.bible) } satisfies SignedChannel)
+    const channel: SignedChannel = { ...built, sig: await signBible(env, built.bible) }
+    // Keep a copy, so the admin page sees it and it can follow the player to other devices later.
+    if (env.DB && player) await insertChannel(env.DB, player, channel, brief).run().catch((err) => console.warn('[channel] not stored', err))
+    return json(channel)
   } catch (err) {
     if (request.signal.aborted) return json({ error: 'Cancelled' }, 499)
     console.error('[channel]', err)

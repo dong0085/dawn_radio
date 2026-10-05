@@ -8,6 +8,7 @@ import type {
   TranslateResponse,
 } from '../shared/api.ts'
 import type { ChannelRequest, ChannelResponse } from '../shared/channels.ts'
+import { playerId } from './player'
 
 export class ApiError extends Error {
   status: number
@@ -17,9 +18,11 @@ export class ApiError extends Error {
   }
 }
 
-/** fetch() for our /api routes: turns errors into ApiError. */
+/** fetch() for our /api routes: sends the player id and turns errors into ApiError. */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(`/api${path}`, init)
+  const headers = new Headers(init.headers)
+  headers.set('x-player', playerId())
+  const res = await fetch(`/api${path}`, { ...init, headers })
   if (!res.ok) {
     let message = res.statusText
     try {
@@ -33,7 +36,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   return res
 }
 
-const offline: ApiConfig = { dialogue: false, tts: false, stt: false, translate: false, channels: false }
+const offline: ApiConfig = { dialogue: false, tts: false, stt: false, translate: false, channels: false, db: false, admin: false }
 let configPromise: Promise<ApiConfig> | null = null
 
 /** What the server has set up. Fetched once; offline defaults if the API is missing. */

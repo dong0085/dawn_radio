@@ -463,9 +463,9 @@ export class Conversation {
         console.error('[conversation] batch failed', err)
         this.batchPending = false
         this.batchAbort = null
-        if (err instanceof ApiError && err.status === 400) {
+        if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
           // Retrying won't help; wait for the player to resume.
-          this.flash('Channel error', 6000)
+          this.flash(err.status === 410 ? 'Channel off the air' : 'Channel error', 6000)
           this.set({ paused: true, activity: 'idle' })
           return
         }

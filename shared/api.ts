@@ -13,6 +13,10 @@ export interface ApiConfig {
   translate: boolean
   /** New channels can be made from a briefing (needs Claude). */
   channels: boolean
+  /** A database keeps a copy of channels and sessions. */
+  db: boolean
+  /** The admin page is set up (database + ADMIN_TOKEN). */
+  admin: boolean
 }
 
 export interface StoryMemory {

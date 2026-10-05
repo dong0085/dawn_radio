@@ -9,11 +9,14 @@ export const channelLabel = (n: number) => `CH-${String(n).padStart(2, '0')}`
 /** A frequency per channel number, in the 446 MHz band (CH-04 → 446.200 MHz). */
 export const frequencyFor = (n: number) => `${(446.1 + n * 0.025).toFixed(3)} MHz`
 
+/** The player's own light color on every made channel. */
+export const PLAYER_COLOR = '#3dff9a'
+
 /** Next free number after the preset and every stored channel. */
 export const nextChannelNumber = (taken: number[]) => Math.max(...taken) + 1
 
 /** Light colors per side, picked by channel number. The player's green stays clear of them. */
-const PALETTES: [string, string][] = [
+export const PALETTES: [string, string][] = [
   ['#2fc4ff', '#ffb23f'],
   ['#b98cff', '#ffcf5c'],
   ['#ff8a7a', '#7fd4ff'],
@@ -57,7 +60,7 @@ export function channelData(ch: StoredChannel): ChannelData {
     nativeLang: bible.nativeLang,
     premise: display.premise,
     parties,
-    player: { name: 'You', color: '#3dff9a' },
+    player: { name: 'You', color: PLAYER_COLOR },
     log: {
       title: display.log.title,
       sections: display.log.sections,

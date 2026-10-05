@@ -14,6 +14,11 @@ export const PER_MINUTE: Record<string, number> = {
   '/tts/stream': 40,
   '/stt': 20,
   '/translate': 60,
+  '/sessions': 60,
+  '/channels': 20,
+  '/sync': 5,
+  // Also limits guessing the admin token.
+  '/admin': 120,
 }
 
 const hits = new Map<string, number[]>()

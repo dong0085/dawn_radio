@@ -412,6 +412,11 @@ export async function handleDialogue(request: Request, env: DialogueEnv): Promis
   }
   if (!read) return json({ error: 'Invalid request' }, 400)
   const { story, req: dialogue } = read
+  // A channel an admin took off the air gets no more lines.
+  if (env.DB && !stories[story.id]) {
+    const row = await env.DB.prepare('SELECT hidden FROM channels WHERE id = ?').bind(story.id).first<{ hidden: number }>()
+    if (row?.hidden) return json({ error: 'This channel is off the air' }, 410)
+  }
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY })
   const model = env.CLAUDE_MODEL || 'claude-opus-5-5'

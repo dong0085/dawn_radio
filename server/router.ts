@@ -1,20 +1,30 @@
 import type { ApiConfig } from '../shared/api.ts'
+import { adminEnabled, handleAdmin, type AdminEnv } from './admin.ts'
 import { handleChannel } from './channel.ts'
+import { countRequest, playerOf, touchPlayer, type WaitUntil } from './db.ts'
 import { handleDialogue, type DialogueEnv } from './dialogue.ts'
 import { json } from './http.ts'
 import { rateLimit } from './rateLimit.ts'
 import { handleStt, type SttEnv } from './stt.ts'
+import { handleSync } from './sync.ts'
 import { handleTranslate, type TranslateEnv } from './translate.ts'
 import { handleTts, type TtsEnv } from './tts.ts'
 
-export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv {}
+export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv, AdminEnv {}
+
+/** Routes whose requests are counted per player and day (they cost money). */
+const COUNTED = new Set(['/dialogue', '/channel', '/tts', '/tts/stream', '/stt', '/translate'])
+
+/** Paths with ids share one rate limit, e.g. /sessions/cave-rescue -> /sessions. */
+const routeOf = (path: string) => (/^\/(admin|sessions|channels)(\/|$)/.exec(path)?.[0].replace(/\/$/, '') ?? path)
 
 /**
  * All /api routes. Used by the Cloudflare Pages Function in production
  * and by Vite middleware during `npm run dev`.
  */
-export async function handleApi(request: Request, env: Env): Promise<Response> {
+export async function handleApi(request: Request, env: Env, waitUntil: WaitUntil = (p) => void p.catch(() => undefined)): Promise<Response> {
   const path = new URL(request.url).pathname.replace(/^\/api/, '').replace(/\/$/, '')
+  const player = playerOf(request)
 
   if (path === '/config') {
     return json({
@@ -23,22 +33,34 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
       stt: !!env.ELEVENLABS_API_KEY,
       translate: !!env.DEEPL_API_KEY,
       channels: !!env.ANTHROPIC_API_KEY,
+      db: !!env.DB,
+      admin: adminEnabled(env),
     } satisfies ApiConfig)
   }
 
+  const route = routeOf(path)
   const visitor = request.headers.get('cf-connecting-ip') ?? 'local'
-  const wait = rateLimit(visitor, path)
+  const wait = rateLimit(visitor, route)
   if (wait) return new Response(JSON.stringify({ error: 'Too many requests' }), {
     status: 429,
     headers: { 'content-type': 'application/json', 'retry-after': String(wait) },
   })
 
+  const db = env.DB
+  if (db && COUNTED.has(path)) {
+    const counted = [countRequest(db, player, path)]
+    if (player) counted.push(touchPlayer(db, player))
+    waitUntil(db.batch(counted).catch((err) => console.warn('[api] usage not counted', err)))
+  }
+
   try {
+    if (route === '/admin') return await handleAdmin(request, env, path)
+    if (route === '/sessions' || route === '/channels' || path === '/sync') return await handleSync(request, env, path, player)
     switch (path) {
       case '/dialogue':
         return await handleDialogue(request, env)
       case '/channel':
-        return await handleChannel(request, env)
+        return await handleChannel(request, env, player)
       case '/tts':
         return await handleTts(request, env)
       case '/tts/stream':

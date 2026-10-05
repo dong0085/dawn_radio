@@ -115,6 +115,34 @@ Optional:
 
 `pnpm preview:cf` runs the built app on Cloudflare's local runtime, the same as production.
 
+## Database and admin
+
+A Cloudflare D1 database (SQLite) keeps a server copy of what people do. The browser stays the main copy, so the radio works the same with or without it.
+
+| Table | What it holds |
+| --- | --- |
+| `players` | One row per browser: a random id the browser makes and sends as `x-player`. No accounts yet. |
+| `channels` | Every channel made from a briefing: the briefing, the signed bible, who made it, and whether it is off the air |
+| `sessions` | Each player's saved progress per channel (transcript, field log, story memory), as the browser saves it |
+| `usage` | Requests per day, player and route, to see what the site costs |
+
+Set it up once:
+
+```bash
+pnpm exec wrangler d1 create dawn-radio      # put the database_id it prints into wrangler.toml
+pnpm db:migrate                              # create the tables (pnpm db:migrate:local for pnpm dev)
+pnpm exec wrangler pages secret put ADMIN_TOKEN --project-name dawn-radio
+```
+
+**Admin page** at `/admin`, signed in with `ADMIN_TOKEN` (16+ characters; add it to `.env` for `pnpm dev`):
+
+- **Overview:** listeners today and this week, channels and sessions, requests per day, channels made per day, requests per route.
+- **Channels:** search by title, briefing, id or player; read the briefing and story notes; see every session on a channel; **take a channel off the air** (the live feed stops serving it) or delete it with its sessions.
+- **Sessions:** search and filter; read a full transcript with translations and the ending; delete.
+- **Listeners:** sort by most recent or most requests; see a listener's channels, sessions and usage; delete everything stored for them.
+
+New tables go in a new `migrations/000N_*.sql` file, then `pnpm db:migrate`.
+
 ## Controls
 
 | Action | Touch / mouse | Keyboard |
@@ -189,6 +217,11 @@ server/               /api routes, shared by the dev server and Cloudflare
   tts.ts, stt.ts      ElevenLabs voices (whole or streamed) and Scribe
   translate.ts        DeepL
   rateLimit.ts        per-visitor limits
+  db.ts               D1 database: player ids, stored channels and sessions, usage counts
+  sync.ts             /api/sessions, /api/channels, /api/sync: the browser's copy goes to the database
+  admin.ts            /api/admin: overview, channels, sessions, listeners (needs ADMIN_TOKEN)
+migrations/           database tables (pnpm db:migrate)
+admin.html, src/admin/  the admin page
 functions/api/[[route]].ts   Cloudflare Pages Function entry
 scripts/make-sfx.mjs  one-off: recorded ambience with the ElevenLabs Sound Effects API
 docs/images/          README screenshots

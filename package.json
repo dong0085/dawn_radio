@@ -10,7 +10,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler pages deploy",
-    "preview:cf": "pnpm build && wrangler pages dev"
+    "preview:cf": "pnpm build && wrangler pages dev",
+    "db:migrate:local": "wrangler d1 migrations apply dawn-radio --local",
+    "db:migrate": "wrangler d1 migrations apply dawn-radio --remote"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
