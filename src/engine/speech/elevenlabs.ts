@@ -3,7 +3,7 @@ import { apiFetch, ApiError, readNdjson } from '../../api'
 import { NARRATOR_ID, type Line, type Party } from '../../types'
 import type { RadioAudio } from '../radioAudio'
 import { spokenText, wordsFromAlignment, type CharAlignment } from '../words'
-import { playStream, StreamedClip } from './stream'
+import { clipGain, playStream, StreamedClip } from './stream'
 import { TimeStretch } from './stretch'
 import type { FinishReason, Playback, PreparedSpeech, SpeechProvider } from './types'
 
@@ -157,6 +157,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
 export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: number, to: AudioNode = audio.input): Playback {
   const ctx = audio.context
   const buffer = speed === 1 ? original : stretchBuffer(ctx, original, speed)
+  const out = clipGain(ctx, to)
   let offset = 0
   let startedAt = 0
   let source: AudioBufferSourceNode | null = null
@@ -167,17 +168,19 @@ export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: numb
   const end = (r: FinishReason) => {
     if (done) return
     done = true
+    out.release()
     finish(r)
   }
 
   const start = () => {
     const src = ctx.createBufferSource()
     src.buffer = buffer
-    src.connect(to)
+    src.connect(out.node)
     src.onended = () => {
       if (src === source && !paused) end('ended')
     }
     startedAt = ctx.currentTime - offset
+    out.fadeIn(ctx.currentTime)
     src.start(0, offset)
     source = src
   }
@@ -196,7 +199,7 @@ export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: numb
       paused = true
       const s = source
       source = null
-      s?.stop()
+      s?.stop(out.fadeOut())
     },
     resume() {
       if (!paused || done) return
@@ -207,7 +210,7 @@ export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: numb
       paused = true
       const s = source
       source = null
-      s?.stop()
+      s?.stop(out.fadeOut())
       end('stopped')
     },
     finished,

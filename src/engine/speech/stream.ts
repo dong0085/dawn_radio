@@ -1,7 +1,7 @@
 import type { Segment, TimedWord } from '../../types'
 import type { RadioAudio } from '../radioAudio'
 import { estimateWords, scaleTo, spansFromChars, tokenize, type CharAlignment } from '../words'
-import { TimeStretch } from './stretch'
+import { concat, TimeStretch } from './stretch'
 import type { FinishReason, Playback } from './types'
 
 /**
@@ -100,6 +100,38 @@ export class StreamedClip {
   }
 }
 
+/** Seconds of lead before a clip starts, so the first sound is never scheduled in the past. */
+const LEAD = 0.05
+/** Seconds a clip fades in and out, so starting or stopping mid-word doesn't click. */
+const FADE = 0.015
+
+/** A volume stage for one clip, faded at each start and stop. */
+export function clipGain(ctx: BaseAudioContext, to: AudioNode) {
+  const node = ctx.createGain()
+  node.gain.value = 0
+  node.connect(to)
+  return {
+    node,
+    fadeIn(at: number) {
+      node.gain.cancelScheduledValues(at)
+      node.gain.setValueAtTime(0, at)
+      node.gain.linearRampToValueAtTime(1, at + FADE)
+    },
+    /** Fades out now; returns the time it is silent. */
+    fadeOut() {
+      const t = ctx.currentTime
+      node.gain.cancelScheduledValues(t)
+      node.gain.setValueAtTime(node.gain.value, t)
+      node.gain.linearRampToValueAtTime(0, t + FADE)
+      return t + FADE
+    },
+    /** Unplugs it once the last fade is over. */
+    release() {
+      setTimeout(() => node.disconnect(), FADE * 1000 + 100)
+    },
+  }
+}
+
 /**
  * Plays a clip through the radio, starting before it has fully arrived.
  * `speed` is read at each start and resume; positions stay in seconds of the original clip.
@@ -107,6 +139,7 @@ export class StreamedClip {
 export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => number = () => 1, to: AudioNode = audio.input): Playback {
   const ctx = audio.context
   const rate = clip.sampleRate
+  const out = clipGain(ctx, to)
   let stretch = new TimeStretch(1, rate)
   let flushed = false
   /** Seconds of the clip played before the current run started (after a resume). */
@@ -133,6 +166,7 @@ export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => n
     done = true
     clearTimeout(endTimer)
     unsubscribe()
+    out.release()
     finish(r)
   }
 
@@ -142,7 +176,7 @@ export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => n
   const play = (data: Float32Array) => {
     if (!data.length) return
     // The stream fell behind playback: leave a short gap and shift the clock with it.
-    const earliest = ctx.currentTime + 0.03
+    const earliest = ctx.currentTime + LEAD
     if (nextTime < earliest) {
       startedAt += earliest - nextTime
       nextTime = earliest
@@ -151,7 +185,8 @@ export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => n
     buffer.copyToChannel(data as Float32Array<ArrayBuffer>, 0)
     const src = ctx.createBufferSource()
     src.buffer = buffer
-    src.connect(to)
+    src.connect(out.node)
+    if (!sources.length) out.fadeIn(nextTime)
     src.start(nextTime)
     sources.push(src)
     nextTime += buffer.duration
@@ -160,16 +195,20 @@ export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => n
 
   const schedule = () => {
     if (paused || done) return
+    // Everything that has arrived plays as one piece, timed after the work to prepare it.
+    // Pieces timed before it can start late and overlap the next one (after a resume, it's all of them).
+    const parts: Float32Array[] = []
     while (next < clip.chunks.length) {
       const chunk = clip.chunks[next]
-      play(stretch.push(nextOffset ? chunk.subarray(nextOffset) : chunk))
+      parts.push(stretch.push(nextOffset ? chunk.subarray(nextOffset) : chunk))
       next++
       nextOffset = 0
     }
     if (clip.done && !flushed) {
       flushed = true
-      play(stretch.flush())
+      parts.push(stretch.flush())
     }
+    play(concat(parts))
     if (clip.done) {
       clearTimeout(endTimer)
       endTimer = setTimeout(() => !paused && end('ended'), Math.max(0, (nextTime - ctx.currentTime) * 1000) + 30)
@@ -189,15 +228,16 @@ export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => n
     nextOffset = sample
     stretch = new TimeStretch(speed(), rate)
     flushed = false
-    startedAt = ctx.currentTime + 0.03
+    startedAt = ctx.currentTime + LEAD
     nextTime = startedAt
     schedule()
   }
 
   const stopSources = () => {
+    const at = out.fadeOut()
     for (const s of sources) {
       try {
-        s.stop()
+        s.stop(at)
       } catch {
         /* not started */
       }

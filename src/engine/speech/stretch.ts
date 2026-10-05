@@ -123,7 +123,8 @@ export class TimeStretch {
   }
 }
 
-function concat(parts: Float32Array[]): Float32Array {
+/** Joins pieces of audio into one. */
+export function concat(parts: Float32Array[]): Float32Array {
   if (parts.length === 1) return parts[0]
   const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0))
   let at = 0
