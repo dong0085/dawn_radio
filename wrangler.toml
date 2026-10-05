@@ -11,3 +11,9 @@ binding = "DB"
 database_name = "dawn-radio"
 database_id = "a0a63574-1c0f-4bec-ad43-2141f60e13a9"
 migrations_dir = "migrations"
+
+# Voice audio: every line for a day (tmp/, deleted by a bucket rule), and saved recordings (saved/).
+# Local dev uses a local copy in .wrangler/state.
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "dawn-radio-audio"
