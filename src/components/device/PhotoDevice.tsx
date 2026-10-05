@@ -10,6 +10,8 @@ import './photo.css'
 export interface PhotoDeviceProps extends DeviceViewProps {
   skin: PhotoSkin
   theme: RadioTheme
+  /** Size to draw at; measured from the stage when left out. */
+  scale?: number
 }
 
 const box = ({ x, y, w, h, r }: Rect): CSSProperties => ({
@@ -44,8 +46,9 @@ function Light({ rect, color, level, className = '' }: { rect: Rect; color: stri
 }
 
 /** The walkie-talkie drawn from a rendered photo, with live screen, lights and keys on top. */
-export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, screen, controls, className = '' }: PhotoDeviceProps) {
-  const [stageRef, scale] = useFitScale(skin.width, skin.height, 1)
+export function PhotoDevice({ skin, theme, scale: givenScale, style, led, leftLight, rightLight, screen, controls, className = '' }: PhotoDeviceProps) {
+  const [stageRef, fitScale] = useFitScale(skin.width, skin.height, 1)
+  const scale = givenScale ?? fitScale
   const { talk, replay } = controls
   const { pause, talk: talkSkin } = skin
   const press = usePress({
@@ -75,6 +78,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
             height: skin.height,
             transform: `translate(-50%, -50%) scale(${scale})`,
             '--fade': fade,
+            '--photo-tone': skin.tone ?? 'brightness(1)',
           } as CSSProperties
         }
       >

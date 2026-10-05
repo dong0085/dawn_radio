@@ -26,6 +26,7 @@ import { uiText, type UiText } from './i18n'
 import type { TourStop } from './i18n/text'
 import { useConversation } from './engine/useConversation'
 import { useClock } from './hooks/useClock'
+import { useFitScale } from './hooks/useFitScale'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useShortcuts } from './hooks/useShortcuts'
 import { caveRescue } from './scenarios/caveRescue'
@@ -86,6 +87,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   /** Transcript line to scroll to, when opened from the log. */
   const [transcriptFocus, setTranscriptFocus] = useState<string | undefined>()
   const layoutRef = useRef<HTMLDivElement>(null)
+  const [deviceRef, deviceScale] = useFitScale(skin?.width ?? 1, skin?.height ?? 1, 1)
   const [training, setTraining] = useState(false)
   /** The channel was playing when training opened, so it plays again after. */
   const resumeAfterTraining = useRef(false)
@@ -593,13 +595,21 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
         {
           ...vars,
           '--device-ratio': skin ? skin.width / skin.height : theme.designWidth / theme.designHeight,
+          // The docked log lines up with the radio's screen.
+          ...(skin && {
+            '--dock-h': `${skin.screen.h * deviceScale}px`,
+            '--dock-shift': `${(skin.screen.y + skin.screen.h / 2 - skin.height / 2) * deviceScale}px`,
+            '--dock-r': `${(skin.screen.r ?? 0) * deviceScale}px`,
+            // Log text grows with the screen text, a little, so the narrow panel still fits it.
+            '--dock-zoom': Math.min(1.2, Math.max(1, (skin.screen.w / skin.screenLayoutWidth) * deviceScale)),
+          }),
           // Match the page to the photo backdrop so the radio's area blends in.
           background: skin?.backdrop,
         } as CSSProperties
       }
     >
-      <div className="layout__device">
-        {skin ? <PhotoDevice skin={skin} theme={theme} {...device} /> : <RadioDevice theme={theme} {...device} />}
+      <div ref={deviceRef} className="layout__device">
+        {skin ? <PhotoDevice skin={skin} theme={theme} scale={deviceScale} {...device} /> : <RadioDevice theme={theme} {...device} />}
       </div>
       {docked && logConfig && (
         <DockedLog

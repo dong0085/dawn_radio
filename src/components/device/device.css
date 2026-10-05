@@ -219,12 +219,12 @@
 
 .brand {
   font-size: 17px;
-  letter-spacing: 0.22em;
+  letter-spacing: var(--track-wide, 0.14em);
 }
 .brand-sub {
   margin-top: 3px;
   font-size: 8.5px;
-  letter-spacing: 0.32em;
+  letter-spacing: var(--track-wide, 0.14em);
   padding-left: 6px;
   opacity: 0.8;
 }
@@ -253,7 +253,7 @@
 }
 .rxtx-label {
   font-size: 13px;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--track-caps, 0.1em);
 }
 
 /* ---------- LED ---------- */

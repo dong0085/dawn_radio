@@ -37,6 +37,17 @@ export interface RadioTheme {
   /** Colors for log states: going well, needs attention, danger. */
   tone: { ok: string; warn: string; alert: string }
   fonts: { ui: string; subtitle: string }
+  /** Letter spacing (CSS lengths) for uppercase text. */
+  tracking: {
+    /** Titles and headings. */
+    title: string
+    /** Small labels and keys. */
+    caps: string
+    /** Tiny eyebrow labels that need a little more air. */
+    wide: string
+    /** Words printed on the radio body. */
+    print: string
+  }
   /** Page layout around the device. */
   layout: {
     /** Side of the radio the log panel docks to. */
@@ -77,6 +88,7 @@ export const defaultTheme: RadioTheme = {
     ui: "'Saira', 'Rajdhani', system-ui, sans-serif",
     subtitle: "'Figtree', 'Avenir Next', system-ui, sans-serif",
   },
+  tracking: { title: '0.05em', caps: '0.1em', wide: '0.14em', print: '0.14em' },
   layout: { logSide: 'right', dockFrom: 900, dockWidth: 340 },
 }
 
@@ -111,6 +123,10 @@ export function themeVars(theme: RadioTheme, scenario: Scenario): CSSProperties 
     '--player': scenario.player.color,
     '--font-ui': theme.fonts.ui,
     '--font-sub': theme.fonts.subtitle,
+    '--track-title': theme.tracking.title,
+    '--track-caps': theme.tracking.caps,
+    '--track-wide': theme.tracking.wide,
+    '--track-print': theme.tracking.print,
     '--design-w': `${theme.designWidth}px`,
     '--design-h': `${theme.designHeight}px`,
     '--dock-w': `${theme.layout.dockWidth}px`,

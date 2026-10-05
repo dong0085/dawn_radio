@@ -20,6 +20,12 @@
 
 /* ---------- Image layers ---------- */
 
+.photo-device__base,
+.photo-pressed,
+.photo-key__face {
+  filter: var(--photo-tone, brightness(1));
+}
+
 .photo-device__base {
   left: 0;
   top: 0;
@@ -205,32 +211,31 @@
 /* ---------- Printed labels ---------- */
 
 .photo-label {
+  --print: rgba(208, 213, 216, 0.76);
   position: absolute;
   transform: translate(-50%, -50%);
   white-space: nowrap;
   text-transform: uppercase;
-  letter-spacing: 0.24em;
-  padding-left: 0.24em;
-  font-weight: 500;
+  letter-spacing: var(--track-print, 0.14em);
+  padding-left: var(--track-print, 0.14em);
+  font-weight: 600;
   line-height: 1;
-  color: rgba(198, 204, 208, 0.56);
+  color: var(--print);
   text-shadow:
     0 1px 0 rgba(0, 0, 0, 0.85),
     0 -1px 0 rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
 .photo-label--brand {
-  letter-spacing: 0.26em;
-  padding-left: 0.26em;
-  color: rgba(198, 204, 208, 0.62);
+  --print: rgba(208, 213, 216, 0.84);
 }
 .photo-label--sub {
-  letter-spacing: 0.4em;
-  padding-left: 0.4em;
-  color: rgba(198, 204, 208, 0.45);
+  --print: rgba(208, 213, 216, 0.6);
+  letter-spacing: calc(var(--track-print, 0.14em) * 2);
+  padding-left: calc(var(--track-print, 0.14em) * 2);
 }
 .photo-label--talk {
-  color: rgba(198, 204, 208, 0.5);
+  --print: rgba(208, 213, 216, 0.7);
   transition: color 120ms, transform 60ms;
 }
 
@@ -262,7 +267,7 @@
 }
 .photo-key:active:not(:disabled) .photo-key__face {
   transform: scale(0.965);
-  filter: brightness(0.78);
+  filter: var(--photo-tone, brightness(1)) brightness(0.78);
 }
 
 .photo-key--round {
@@ -288,7 +293,7 @@
   border-radius: 40px;
 }
 .photo-key--talk.is-pressed .photo-label--talk {
-  color: color-mix(in srgb, var(--player) 60%, rgba(198, 204, 208, 0.5));
+  color: color-mix(in srgb, var(--player) 60%, var(--print));
   transform: translate(-50%, calc(-50% + 4px));
 }
 .photo-key--talk:disabled .photo-label--talk {
@@ -296,5 +301,5 @@
 }
 
 .photo-key--grille:disabled .photo-key__face {
-  filter: brightness(0.7);
+  filter: var(--photo-tone, brightness(1)) brightness(0.7);
 }

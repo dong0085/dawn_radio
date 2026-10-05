@@ -50,13 +50,13 @@
 }
 .status__incident {
   font-size: 9px;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
 .status__title {
   font-size: 15px;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--track-title, 0.05em);
   text-transform: uppercase;
   font-weight: 500;
   white-space: nowrap;
@@ -89,6 +89,20 @@
 .status__actions {
   display: flex;
   gap: 6px;
+}
+
+/* With three or more keys, the meters stack so the channel name keeps its room. */
+.status:has(.status__actions > :nth-child(3)) .status__meters {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 1px 3px;
+}
+.status:has(.status__actions > :nth-child(3)) .status__clock {
+  grid-column: 1 / -1;
+  margin-left: 0;
+  font-size: 10px;
 }
 
 .screen-key {
@@ -170,7 +184,7 @@
   gap: 5px;
   height: 16px;
   font-size: 9px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   white-space: nowrap;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -228,7 +242,7 @@
   right: 0;
   text-align: center;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--party-right);
 }
@@ -274,7 +288,7 @@
 .subtitle__hint {
   margin: 10px 0 0;
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--text-dim);
   opacity: 0.6;
@@ -315,7 +329,7 @@
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  letter-spacing: 0.2em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
 }
 .tx-view__dot {
@@ -337,7 +351,7 @@
 }
 .tx-view__text.is-empty {
   font-size: 13px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -385,7 +399,7 @@
 }
 .message-view__eyebrow {
   font-size: 9.5px;
-  letter-spacing: 0.2em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -393,7 +407,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 500;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--track-title, 0.05em);
   text-transform: uppercase;
 }
 .message-view__body {
@@ -418,7 +432,7 @@
   background: rgba(0, 0, 0, 0.2);
   color: var(--text-dim);
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -457,7 +471,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   color: var(--text-dim);
 }
 
@@ -490,7 +504,7 @@
 .screen-panel__title {
   flex: 1;
   font-size: 11px;
-  letter-spacing: 0.2em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -531,7 +545,7 @@
   align-items: baseline;
   gap: 8px;
   font-size: 9.5px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
 }
 .transcript__meta time {
@@ -577,7 +591,7 @@
   display: flex;
   flex-direction: column;
   font-size: 10.5px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -599,7 +613,7 @@
   background: rgba(0, 0, 0, 0.25);
   color: var(--party-right);
   font-size: 10.5px;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -680,7 +694,7 @@
   margin: 0 0 6px;
   font-size: 9.5px;
   font-weight: 400;
-  letter-spacing: 0.18em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -731,7 +745,7 @@
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
   font-size: 8px;
   line-height: 13px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--accent);
 }
@@ -895,7 +909,7 @@ button.log-timeline__row:hover {
 }
 .log-timeline__row time {
   font-size: 10px;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--track-title, 0.05em);
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
 }
@@ -928,26 +942,63 @@ button.log-timeline__row:hover {
 
 .docked-log {
   --log-bg: var(--glass);
+  position: relative;
+  /* set by the page to line up with the radio's screen */
+  top: var(--dock-shift, 0px);
   flex: none;
   align-self: center;
   width: var(--dock-w, 340px);
-  height: min(860px, calc(100% - 48px));
+  height: var(--dock-h, min(860px, calc(100% - 48px)));
   margin: 24px;
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  border-radius: 16px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--dock-r, 16px);
+  /* a second display in the same dark metal bezel */
+  /* top matches --log-bg, so the sticky tabs blend in */
   background: linear-gradient(180deg, var(--glass), var(--glass-deep));
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5), inset 0 0 24px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.85),
+    0 0 0 7px #121415,
+    0 0 0 8px rgba(255, 255, 255, 0.07),
+    0 0 0 10px rgba(0, 0, 0, 0.7),
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 46px rgba(70, 210, 195, 0.07),
+    inset 0 0 40px rgba(0, 0, 0, 0.8),
+    inset 0 0 3px rgba(0, 0, 0, 0.9);
   font-family: var(--font-ui);
   color: var(--text);
   text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.docked-log::before,
+.docked-log::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.docked-log::before {
+  /* scanlines */
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0 1.5px, transparent 1.5px 4.5px);
+}
+.docked-log::after {
+  /* reflection on the glass */
+  background:
+    linear-gradient(158deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.018) 28%, transparent 42%),
+    radial-gradient(ellipse 70% 30% at 85% 105%, rgba(255, 255, 255, 0.035), transparent 70%);
 }
 .docked-log--right {
   margin-left: 0;
 }
 .docked-log--left {
   margin-right: 0;
+}
+
+.docked-log__head,
+.docked-log__body {
+  zoom: var(--dock-zoom, 1);
 }
 
 .docked-log__head {
@@ -1129,7 +1180,7 @@ button.log-timeline__row:hover {
 .channel__label {
   flex: none;
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--track-caps, 0.1em);
   color: var(--text-dim);
 }
 .channel__title {
@@ -1150,7 +1201,7 @@ button.log-timeline__row:hover {
 .channel__state {
   flex: none;
   font-size: 9px;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   color: var(--accent);
 }
@@ -1163,7 +1214,7 @@ button.log-timeline__row:hover {
   background: none;
   color: var(--text-dim);
   font-size: 9.5px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   cursor: pointer;
   opacity: 0.7;
@@ -1202,7 +1253,7 @@ button.log-timeline__row:hover {
   background: transparent;
   color: var(--accent);
   font-size: 10.5px;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -1213,7 +1264,7 @@ button.log-timeline__row:hover {
 }
 .channels__new small {
   font-size: 9px;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--track-title, 0.05em);
   opacity: 0.8;
 }
 
@@ -1229,7 +1280,7 @@ button.log-timeline__row:hover {
 .wizard__step-name {
   flex: none;
   font-size: 9.5px;
-  letter-spacing: 0.2em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
   color: var(--accent);
 }
@@ -1269,7 +1320,7 @@ button.log-timeline__row:hover {
   background: rgba(0, 0, 0, 0.22);
   color: var(--text-dim);
   font: 10.5px/1.2 var(--font-ui);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--track-title, 0.05em);
   text-transform: uppercase;
   text-align: left;
   cursor: pointer;
@@ -1369,7 +1420,7 @@ button.log-timeline__row:hover {
 .wizard__row dt {
   grid-column: 1;
   font-size: 9px;
-  letter-spacing: 0.18em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
   color: var(--text-dim);
 }
@@ -1395,7 +1446,7 @@ button.log-timeline__row:hover {
   background: none;
   color: var(--accent);
   font: 9.5px var(--font-ui);
-  letter-spacing: 0.14em;
+  letter-spacing: var(--track-caps, 0.1em);
   text-transform: uppercase;
   cursor: pointer;
   opacity: 0.8;
@@ -1464,7 +1515,7 @@ button.log-timeline__row:hover {
 .new-channel__busy p {
   margin: 0;
   font-size: 11px;
-  letter-spacing: 0.18em;
+  letter-spacing: var(--track-wide, 0.14em);
   text-transform: uppercase;
   color: var(--text-dim);
 }

@@ -32,6 +32,8 @@ export interface PhotoSkin {
   backdrop: string
   /** How far the image edges fade into the backdrop (0–0.5 of each side). */
   edgeFade?: number
+  /** CSS filter applied to every piece of the photo, e.g. to brighten it. */
+  tone?: string
 
   /** Where the live screen goes. */
   screen: Rect

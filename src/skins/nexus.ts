@@ -7,6 +7,7 @@ export const nexusSkin: PhotoSkin = {
   base: '/skins/nexus/base.jpg',
   backdrop: '#0b0d0e',
   edgeFade: 0.035,
+  tone: 'brightness(1.16) contrast(1.04) saturate(1.15)',
 
   screen: { x: 116, y: 218, w: 662, h: 818, r: 28 },
   screenLayoutWidth: 326,
