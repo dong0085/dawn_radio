@@ -43,6 +43,7 @@ export class RadioAudio {
   private noiseGain!: GainNode
   private analyser!: AnalyserNode
   private micAnalyser: AnalyserNode | null = null
+  private micSource: MediaStreamAudioSourceNode | null = null
   private buf = new Float32Array(1024)
   private opts: Required<RadioAudioOptions>
   private staticLevel = 1
@@ -75,7 +76,7 @@ export class RadioAudio {
     clearTimeout(this.dropoutTimer)
     this.ambienceSource = null
     this.ambienceCache.clear()
-    this.micAnalyser = null
+    this.detachMic()
     const ctx = this.ctx
     this.ctx = null
     void ctx?.close().catch(() => undefined)
@@ -174,9 +175,17 @@ export class RadioAudio {
 
   attachMic(stream: MediaStream) {
     const ctx = this.ensure()
+    this.detachMic()
     this.micAnalyser = ctx.createAnalyser()
     this.micAnalyser.fftSize = 1024
-    ctx.createMediaStreamSource(stream).connect(this.micAnalyser)
+    this.micSource = ctx.createMediaStreamSource(stream)
+    this.micSource.connect(this.micAnalyser)
+  }
+
+  detachMic() {
+    this.micSource?.disconnect()
+    this.micSource = null
+    this.micAnalyser = null
   }
 
   getMicLevel() {
