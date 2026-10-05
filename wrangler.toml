@@ -3,3 +3,11 @@ name = "dawn-radio"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
+
+# Channels, sessions and usage (see README: Database and admin).
+# Local dev uses a local copy in .wrangler/state; `pnpm db:migrate:local` sets it up.
+[[d1_databases]]
+binding = "DB"
+database_name = "dawn-radio"
+database_id = "a0a63574-1c0f-4bec-ad43-2141f60e13a9"
+migrations_dir = "migrations"
