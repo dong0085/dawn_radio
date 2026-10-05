@@ -123,6 +123,14 @@ export const DEFAULT_GAPS: GapRanges = {
   curtain: [2600, 3200],
 }
 
+/** What the channel can wait on: new lines from the writers, a line's voice audio, or the opening soundscape. */
+type StallReason = 'lines' | 'voice' | 'soundscape'
+const STALL_LABELS: Record<StallReason, string> = { lines: 'new lines', voice: 'voice audio', soundscape: 'soundscape' }
+/** Dead air shorter than this is not logged. */
+const STALL_LOG_MS = 1000
+/** Wait before retrying after a failed request for lines, by failures in a row (ms). */
+const RETRY_DELAYS = [3000, 6000, 12000, 20000]
+
 interface QueueItem {
   line: Line
   /** Audio being prepared; created only when the line is close to airing. */
@@ -163,6 +171,11 @@ export class Conversation {
   private queue: QueueItem[] = []
   private epoch = 0
   private batchPending = false
+  /** Failed requests for lines in a row, and when the next try may start (performance.now()). */
+  private batchFailures = 0
+  private retryAt = 0
+  /** Dead air: the channel waits on something past its natural pause. Logged to the console when it airs again. */
+  private stall: { since: number; reason: StallReason; at: number; parts: Partial<Record<StallReason, number>> } | null = null
   private pendingEnding: ScenarioEnding | null = null
   /** Cancels the batch being written when the player cuts in. */
   private batchAbort: AbortController | null = null
@@ -258,6 +271,7 @@ export class Conversation {
       this.channelOff()
     }
     if (this.bed) this.opts.audio.bedLevel('off')
+    this.stall = null
     this.set({ paused: true, onAir: this.state.activity === 'transmitting' ? PLAYER_ID : null })
   }
 
@@ -464,6 +478,9 @@ export class Conversation {
     clearTimeout(this.gapTimer)
     this.queue = []
     this.batchPending = false
+    this.batchFailures = 0
+    this.retryAt = 0
+    this.stall = null
     this.pendingEnding = null
     this.lastItem = null
     this.played.clear()
@@ -529,12 +546,15 @@ export class Conversation {
     const item = this.queue[0]
     if (!item) {
       if (this.pendingEnding && !this.batchPending) return this.finish(this.pendingEnding)
-      this.set({ activity: 'waiting' })
-      this.requestBatch()
+      this.waitFor('lines')
+      // After a failed request, the next try waits its turn.
+      const retry = this.retryAt - performance.now()
+      if (retry > 0 && !this.batchPending) this.gapTimer = setTimeout(() => this.advance(), retry)
+      else this.requestBatch()
       return
     }
     if (!item.ready) {
-      this.set({ activity: 'waiting' })
+      this.waitFor('voice')
       const epoch = this.epoch
       this.prepare(item).then(() => epoch === this.epoch && this.advance())
       return
@@ -542,7 +562,7 @@ export class Conversation {
     const narration = item.line.speaker === NARRATOR_ID
     // The narrator lets the soundscape set in before the first words.
     if (narration && !this.sceneSettled && this.sceneReady) {
-      this.set({ activity: 'waiting' })
+      this.waitFor('soundscape')
       const epoch = this.epoch
       this.sceneReady.then(() => epoch === this.epoch && this.advance())
       return
@@ -569,7 +589,7 @@ export class Conversation {
     clearTimeout(this.gapTimer)
     const item = this.replayQueue[0]
     if (!item.ready) {
-      this.set({ activity: 'waiting' })
+      this.waitFor('voice')
       const epoch = this.epoch
       this.prepare(item).then(() => epoch === this.epoch && this.advance())
       return
@@ -614,8 +634,11 @@ export class Conversation {
 
   private requestBatch(playerMessage?: string, playerId?: string) {
     if (this.batchPending || (this.pendingEnding && !playerMessage)) return
+    // A refill waits out the delay after a failure; the player's message goes at once.
+    if (!playerMessage && performance.now() < this.retryAt) return
     this.batchPending = true
     const epoch = this.epoch
+    const startedAt = performance.now()
     const abort = new AbortController()
     this.batchAbort = abort
     // Lines that arrive early (streaming) are queued right away.
@@ -656,6 +679,9 @@ export class Conversation {
         }
         this.batchPending = false
         this.batchAbort = null
+        if (this.batchFailures) console.info(`[radio] new lines arrived after ${this.batchFailures} failed ${this.batchFailures === 1 ? 'try' : 'tries'}`)
+        this.batchFailures = 0
+        this.retryAt = 0
         if (playerId && batch.player) this.applyPlayerRendering(batch.player, playerId, 'writers')
         batch.lines.forEach(enqueue)
         if (batch.ending) this.pendingEnding = batch.ending
@@ -663,17 +689,28 @@ export class Conversation {
       })
       .catch((err) => {
         if (epoch !== this.epoch) return
-        console.error('[conversation] batch failed', err)
         this.batchPending = false
         this.batchAbort = null
+        const took = ((performance.now() - startedAt) / 1000).toFixed(1)
+        const what = `[radio] request for new lines failed after ${took}s (${queued.size} lines arrived first):`
         if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
+          console.error(what, `${err.status} ${err.message}. Not retrying.`)
           // Retrying won't help; wait for the player to resume.
           this.flash(err.status === 410 ? this.notices.offAir : this.notices.channelError, 6000)
           this.set({ paused: true, activity: 'idle' })
           return
         }
+        // Wait longer after each failure in a row, and at least as long as the server asks.
+        const delay = Math.max(
+          RETRY_DELAYS[Math.min(this.batchFailures, RETRY_DELAYS.length - 1)],
+          err instanceof ApiError && err.retryAfter ? err.retryAfter * 1000 : 0,
+        )
+        this.batchFailures++
+        this.retryAt = performance.now() + delay
+        console.warn(what, err instanceof ApiError ? `${err.status} ${err.message}.` : err, `Try ${this.batchFailures}; next try in ${delay / 1000}s.`)
         this.flash(this.notices.signalLost)
-        this.gapTimer = setTimeout(() => this.advance(), 3000)
+        // Lines that arrived still play; with none left, advance() schedules the next try.
+        this.advance()
       })
   }
 
@@ -786,6 +823,7 @@ export class Conversation {
   }
 
   private play(item: QueueItem, replay: boolean) {
+    this.endStall()
     const speech = item.ready!
     const playback = speech.play()
     this.playback = playback
@@ -877,6 +915,34 @@ export class Conversation {
     this.queue = []
     this.batchPending = false
     this.pendingEnding = null
+    this.stall = null
+  }
+
+  /** The channel is waiting on something; the time counts as dead air until the next line plays. */
+  private waitFor(reason: StallReason) {
+    this.set({ activity: 'waiting' })
+    const now = performance.now()
+    const s = this.stall
+    if (!s) this.stall = { since: now, reason, at: now, parts: {} }
+    else if (s.reason !== reason) {
+      s.parts[s.reason] = (s.parts[s.reason] ?? 0) + now - s.at
+      s.reason = reason
+      s.at = now
+    }
+  }
+
+  /** A line plays again: logs how long the channel waited, and on what, if it was long enough to hear. */
+  private endStall() {
+    const s = this.stall
+    this.stall = null
+    if (!s) return
+    const now = performance.now()
+    if (now - s.since < STALL_LOG_MS) return
+    s.parts[s.reason] = (s.parts[s.reason] ?? 0) + now - s.at
+    const parts = (Object.entries(s.parts) as [StallReason, number][])
+      .filter(([, ms]) => ms >= 100)
+      .map(([r, ms]) => `${STALL_LABELS[r]} ${(ms / 1000).toFixed(1)}s`)
+    console.warn(`[radio] ${((now - s.since) / 1000).toFixed(1)}s of dead air, waiting for: ${parts.join(', ')}`)
   }
 
   private finish(ending: ScenarioEnding) {

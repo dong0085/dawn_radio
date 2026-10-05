@@ -12,9 +12,12 @@ import { playerId } from './player'
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** Seconds the server asks to wait before trying again (429). */
+  retryAfter?: number
+  constructor(status: number, message: string, retryAfter?: number) {
     super(message)
     this.status = status
+    this.retryAfter = retryAfter
   }
 }
 
@@ -31,7 +34,8 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     } catch {
       /* not JSON */
     }
-    throw new ApiError(res.status, message)
+    const retryAfter = Number(res.headers.get('retry-after')) || undefined
+    throw new ApiError(res.status, message, retryAfter)
   }
   return res
 }
