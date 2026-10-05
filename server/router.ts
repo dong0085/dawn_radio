@@ -1,9 +1,10 @@
 import type { ApiConfig } from '../shared/api.ts'
 import { adminEnabled, handleAdmin, type AdminEnv } from './admin.ts'
 import { handleChannel } from './channel.ts'
-import { countRequest, playerOf, touchPlayer, type WaitUntil } from './db.ts'
+import { playerOf, type WaitUntil } from './db.ts'
 import { handleDialogue, type DialogueEnv } from './dialogue.ts'
 import { json } from './http.ts'
+import { countUsage } from './usage.ts'
 import { rateLimit } from './rateLimit.ts'
 import { handleStt, type SttEnv } from './stt.ts'
 import { handleSync } from './sync.ts'
@@ -46,12 +47,7 @@ export async function handleApi(request: Request, env: Env, waitUntil: WaitUntil
     headers: { 'content-type': 'application/json', 'retry-after': String(wait) },
   })
 
-  const db = env.DB
-  if (db && COUNTED.has(path)) {
-    const counted = [countRequest(db, player, path)]
-    if (player) counted.push(touchPlayer(db, player))
-    waitUntil(db.batch(counted).catch((err) => console.warn('[api] usage not counted', err)))
-  }
+  if (env.DB && COUNTED.has(path)) countUsage(env.DB, player, path, waitUntil)
 
   try {
     if (route === '/admin') return await handleAdmin(request, env, path)

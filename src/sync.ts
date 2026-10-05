@@ -8,14 +8,18 @@ import type { SavedSession } from './engine/session'
  * The browser stays the main copy: nothing here blocks or changes what the radio shows.
  */
 
-/** A session is sent at most this often while it changes. */
-const SEND_EVERY = 8000
+/** A session is sent after this many new lines (one batch of exchanges from the writers)… */
+const SEND_AFTER_LINES = 4
+/** …or this long after it last changed, whichever comes first. */
+const SEND_EVERY = 30_000
 /** Browsers drop keepalive requests larger than 64 KB. */
 const KEEPALIVE_MAX = 60_000
 const UPLOADED_KEY = 'radio.sync.v1'
 
 const pending = new Map<string, SavedSession>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
+/** What the server last got for each session. */
+const sent = new Map<string, { lines: number; phase: SavedSession['phase'] }>()
 
 const enabled = () => getConfig().then((c) => c.db)
 const quiet = (p: Promise<unknown>) => p.catch((err) => console.warn('[sync]', err))
@@ -26,6 +30,7 @@ function send(id: string) {
   const session = pending.get(id)
   pending.delete(id)
   if (!session) return
+  sent.set(id, { lines: session.transcript.length, phase: session.phase })
   const body = JSON.stringify(session)
   void quiet(
     enabled().then((on) =>
@@ -42,11 +47,19 @@ function send(id: string) {
   )
 }
 
-/** Called on every local save. Sends now when the page is going away, else soon. */
+/**
+ * Called on every local save (up to once a second). Sends after every few new lines, when the
+ * channel closes, and when the page is going away; otherwise within SEND_EVERY.
+ */
 export function queueSession(session: SavedSession) {
   const id = session.scenarioId
   pending.set(id, session)
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return send(id)
+  const last = sent.get(id)
+  const due =
+    (typeof document !== 'undefined' && document.visibilityState === 'hidden') ||
+    (session.phase === 'ended' && last?.phase !== 'ended') ||
+    session.transcript.length - (last?.lines ?? 0) >= SEND_AFTER_LINES
+  if (due) return send(id)
   if (!timers.has(id)) timers.set(id, setTimeout(() => send(id), SEND_EVERY))
 }
 
@@ -54,6 +67,7 @@ export function dropSession(id: string) {
   clearTimeout(timers.get(id))
   timers.delete(id)
   pending.delete(id)
+  sent.delete(id)
   void quiet(enabled().then((on) => (on ? apiFetch(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }) : null)))
 }
 

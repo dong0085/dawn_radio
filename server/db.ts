@@ -55,11 +55,11 @@ export function touchPlayer(db: D1Database, player: string, now = Date.now()) {
     .bind(player, now)
 }
 
-/** One more request on this route today. Requests without a player id count under "-". */
-export function countRequest(db: D1Database, player: string | null, route: string, now = Date.now()) {
+/** Adds `count` requests on a route to a day's total. Requests without a player id count under "-". */
+export function countRequests(db: D1Database, day: string, player: string, route: string, count: number) {
   return db
-    .prepare('INSERT INTO usage (day, player, route, count) VALUES (?, ?, ?, 1) ON CONFLICT (day, player, route) DO UPDATE SET count = count + 1')
-    .bind(dayOf(now), player ?? '-', route)
+    .prepare('INSERT INTO usage (day, player, route, count) VALUES (?, ?, ?, ?) ON CONFLICT (day, player, route) DO UPDATE SET count = count + excluded.count')
+    .bind(day, player, route, count)
 }
 
 /** Stores a channel as the server handed it out. An existing row keeps its owner and state. */
