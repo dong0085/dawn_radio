@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { LogConfig, LogEntry, LogSection, LogState, Segment } from '../../types'
 import { ChevronIcon } from '../icons'
 import { formatElapsed } from './format'
-import { ScreenPanel, Segmented } from './Panels'
+import { DockPanel, ScreenPanel, Segmented } from './Panels'
 
 export type LogTab = 'now' | 'timeline'
 
@@ -57,15 +57,14 @@ export interface DockedLogProps extends Omit<LogViewProps, 'since'> {
 /** The log as a panel beside the radio, always open. Entries from the latest update get the "new" tag. */
 export function DockedLog({ onToggleTranslation, side, ...view }: DockedLogProps) {
   return (
-    <aside className={`docked-log docked-log--${side}`} data-tour="log" aria-label={view.config.title}>
-      <header className="docked-log__head">
-        <span className="screen-panel__title">{view.config.title}</span>
-        <TranslationChip on={view.showTranslation} onClick={onToggleTranslation} label={view.config.translationLabel} />
-      </header>
-      <div className="docked-log__body">
-        <LogView {...view} since={Math.max(0, view.log.version - 1)} />
-      </div>
-    </aside>
+    <DockPanel
+      title={view.config.title}
+      side={side}
+      tour="log"
+      headerExtra={<TranslationChip on={view.showTranslation} onClick={onToggleTranslation} label={view.config.translationLabel} />}
+    >
+      <LogView {...view} since={Math.max(0, view.log.version - 1)} />
+    </DockPanel>
   )
 }
 

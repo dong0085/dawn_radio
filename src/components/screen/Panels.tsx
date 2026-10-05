@@ -1,8 +1,8 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { PLAYER_ID, type Party, type PlayerConfig, type TranscriptEntry } from '../../types'
 import type { Settings } from '../../settings'
-import { CloseIcon } from '../icons'
+import { CloseIcon, PlayIcon } from '../icons'
 import { formatElapsed } from './format'
 
 export interface ScreenPanelProps {
@@ -35,20 +35,51 @@ export function ScreenPanel({ title, onClose, headerExtra, closeLabel = 'Close',
   )
 }
 
-export interface TranscriptPanelProps {
+export interface DockPanelProps {
+  title: string
+  /** Side of the radio the panel sits on. */
+  side: 'left' | 'right'
+  headerExtra?: ReactNode
+  /** Field training stop that points at this panel. */
+  tour?: string
+  children: ReactNode
+}
+
+/** A panel beside the radio, always open, styled as a second display. */
+export function DockPanel({ title, side, headerExtra, tour, children }: DockPanelProps) {
+  return (
+    <aside className={`dock-panel dock-panel--${side}`} data-tour={tour} aria-label={title}>
+      <header className="dock-panel__head">
+        <span className="screen-panel__title">{title}</span>
+        {headerExtra}
+      </header>
+      <div className="dock-panel__body">{children}</div>
+    </aside>
+  )
+}
+
+export interface TranscriptViewProps {
   entries: TranscriptEntry[]
   parties: Party[]
   player: PlayerConfig
   showTranslation: boolean
-  onToggleTranslation: () => void
-  onClose: () => void
   /** Id of the entry being spoken, to mark it. */
   liveId?: string
   /** Id of an entry to scroll to and mark, e.g. from the log timeline. */
   focusId?: string
   /** Language tag of the target language, for the player's rewritten lines. */
   targetLang?: string
+  /** Plays the channel again from this line. Leave out to make lines plain text. */
+  onPlayFrom?: (id: string) => void
   labels?: Partial<TranscriptLabels>
+}
+
+export interface TranscriptPanelProps extends TranscriptViewProps {
+  onToggleTranslation: () => void
+  onClose: () => void
+  /** Past lines are playing again: shows the way back to live. */
+  replaying?: boolean
+  onGoLive?: () => void
 }
 
 export interface TranscriptLabels {
@@ -58,6 +89,10 @@ export interface TranscriptLabels {
   cutOff: string
   empty: string
   close: string
+  /** Button on each line that plays the channel again from it. */
+  playFrom: string
+  /** Leaves the replay for the live channel. */
+  backToLive: string
 }
 
 const defaultTranscriptLabels: TranscriptLabels = {
@@ -66,6 +101,8 @@ const defaultTranscriptLabels: TranscriptLabels = {
   cutOff: 'cut off',
   empty: 'Nothing on this channel yet.',
   close: 'Close',
+  playFrom: 'Play from here',
+  backToLive: 'Back to live',
 }
 
 /** Compares two lines ignoring case, spacing and punctuation. */
@@ -75,56 +112,119 @@ const sameText = (a: string, b: string) => {
 }
 
 
-export function TranscriptPanel({
-  entries,
-  parties,
-  player,
+/** Transcript header buttons: back to live while replaying, and the translation toggle. */
+function TranscriptActions({
   showTranslation,
   onToggleTranslation,
-  onClose,
-  liveId,
-  focusId,
-  targetLang,
-  labels,
-}: TranscriptPanelProps) {
+  replaying,
+  onGoLive,
+  labels: l,
+}: Pick<TranscriptPanelProps, 'showTranslation' | 'onToggleTranslation' | 'replaying' | 'onGoLive'> & { labels: TranscriptLabels }) {
+  return (
+    <>
+      {replaying && onGoLive && (
+        <button type="button" className="chip chip--primary" onClick={onGoLive}>
+          {l.backToLive}
+        </button>
+      )}
+      <button type="button" className={`chip${showTranslation ? ' is-on' : ''}`} onClick={onToggleTranslation}>
+        {l.translation}
+      </button>
+    </>
+  )
+}
+
+/** The transcript inside the radio screen, opened from the status bar. */
+export function TranscriptPanel(props: TranscriptPanelProps) {
+  const l = { ...defaultTranscriptLabels, ...props.labels }
+  return (
+    <ScreenPanel title={l.title} onClose={props.onClose} closeLabel={l.close} headerExtra={<TranscriptActions {...props} labels={l} />}>
+      <TranscriptView {...props} labels={l} />
+    </ScreenPanel>
+  )
+}
+
+export interface DockedTranscriptProps extends Omit<TranscriptPanelProps, 'onClose'> {
+  side: 'left' | 'right'
+}
+
+/** The transcript as a panel beside the radio, always open. */
+export function DockedTranscript({ side, ...props }: DockedTranscriptProps) {
+  const l = { ...defaultTranscriptLabels, ...props.labels }
+  return (
+    <DockPanel title={l.title} side={side} headerExtra={<TranscriptActions {...props} labels={l} />}>
+      <TranscriptView {...props} labels={l} />
+    </DockPanel>
+  )
+}
+
+/** Everything said on the channel, newest at the bottom. */
+export function TranscriptView({ entries, parties, player, showTranslation, liveId, focusId, targetLang, onPlayFrom, labels }: TranscriptViewProps) {
   const l = { ...defaultTranscriptLabels, ...labels }
   const endRef = useRef<HTMLDivElement>(null)
   const focusRef = useRef<HTMLLIElement>(null)
+  /** The list was scrolled to the end before the last update, so new lines keep it there. */
+  const atEnd = useRef(true)
+
+  useLayoutEffect(() => {
+    if (atEnd.current) endRef.current?.scrollIntoView({ block: 'end' })
+  }, [entries.length])
   useEffect(() => {
-    // While a line is in focus, new lines leave the scroll position alone.
     if (focusId) focusRef.current?.scrollIntoView({ block: 'center' })
-    else endRef.current?.scrollIntoView({ block: 'end' })
-  }, [entries.length, focusId])
+  }, [focusId])
+  useEffect(() => {
+    const box = endRef.current?.parentElement
+    if (!box) return
+    const onScroll = () => (atEnd.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48)
+    box.addEventListener('scroll', onScroll, { passive: true })
+    return () => box.removeEventListener('scroll', onScroll)
+  }, [])
 
   const who = (id: string) =>
     id === PLAYER_ID ? { name: player.name, color: player.color } : parties.find((p) => p.id === id) ?? { name: id, color: 'inherit' }
 
   return (
-    <ScreenPanel
-      title={l.title}
-      onClose={onClose}
-      closeLabel={l.close}
-      headerExtra={
-        <button type="button" className={`chip${showTranslation ? ' is-on' : ''}`} onClick={onToggleTranslation}>
-          {l.translation}
-        </button>
-      }
-    >
+    <>
       {entries.length === 0 && <p className="transcript__empty">{l.empty}</p>}
       <ol className="transcript">
         {entries.map((e) => {
           const p = who(e.speaker)
           const translation = e.segments.map((s) => s.translation).filter(Boolean).join(' ')
+          // The player's own lines have no audio to play again.
+          const playable = !!onPlayFrom && e.speaker !== PLAYER_ID
           return (
             <li
               key={e.id}
               ref={e.id === focusId ? focusRef : undefined}
-              className={`transcript__entry${e.id === liveId ? ' is-live' : ''}${e.id === focusId ? ' is-focus' : ''}`}
+              className={`transcript__entry${e.id === liveId ? ' is-live' : ''}${e.id === focusId ? ' is-focus' : ''}${playable ? ' is-playable' : ''}`}
+              onClick={
+                playable
+                  ? () => {
+                      // Selecting text to copy leaves the channel alone.
+                      if (!window.getSelection()?.isCollapsed) return
+                      onPlayFrom(e.id)
+                    }
+                  : undefined
+              }
             >
               <div className="transcript__meta">
                 <span style={{ color: p.color }}>{p.name}</span>
                 <time>{formatElapsed(e.at)}</time>
                 {e.interrupted && <span className="transcript__cut">{l.cutOff}</span>}
+                {playable && (
+                  <button
+                    type="button"
+                    className="transcript__play"
+                    aria-label={l.playFrom}
+                    title={l.playFrom}
+                    onClick={(ev) => {
+                      ev.stopPropagation()
+                      onPlayFrom(e.id)
+                    }}
+                  >
+                    <PlayIcon size={11} />
+                  </button>
+                )}
               </div>
               <p className="transcript__target">{e.segments.map((s) => s.text).join(' ')}</p>
               {e.rendering && !sameText(e.rendering, e.segments.map((s) => s.text).join(' ')) && (
@@ -138,7 +238,7 @@ export function TranscriptPanel({
         })}
       </ol>
       <div ref={endRef} />
-    </ScreenPanel>
+    </>
   )
 }
 

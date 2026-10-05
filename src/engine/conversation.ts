@@ -45,6 +45,8 @@ export interface ConversationState {
   resumed: boolean
   /** People, places and events so far. */
   log: LogState
+  /** Past lines are playing again; the live channel carries on after them. */
+  replaying: boolean
 }
 
 export interface ConversationOptions {
@@ -128,6 +130,7 @@ const initialState = (engine: SpeechEngine, log: LogState): ConversationState =>
   notice: null,
   log,
   resumed: false,
+  replaying: false,
 })
 
 /**
@@ -150,6 +153,10 @@ export class Conversation {
   private playback: Playback | null = null
   private playingItem: QueueItem | null = null
   private lastItem: QueueItem | null = null
+  /** Every line that has aired, by id, so it can play again. */
+  private played = new Map<string, QueueItem>()
+  /** Past lines still to play again before the channel goes back to live. */
+  private replayQueue: QueueItem[] = []
   /** When the channel last went quiet (a line or the player's transmission ended), from performance.now(). */
   private quietSince = 0
   private gapTimer: ReturnType<typeof setTimeout> | undefined
@@ -216,7 +223,7 @@ export class Conversation {
   }
 
   pause() {
-    if (this.state.paused || this.state.phase !== 'running') return
+    if (this.state.paused || (this.state.phase !== 'running' && !this.state.replaying)) return
     clearTimeout(this.gapTimer)
     if (this.playback) {
       this.playback.pause()
@@ -246,6 +253,43 @@ export class Conversation {
     clearTimeout(this.gapTimer)
     this.stopPlayback()
     this.play(target, true)
+  }
+
+  /** Plays the channel again from a past line, then carries on live where it left off. */
+  replayFrom(lineId: string) {
+    if (this.isTransmitting()) return
+    const at = this.state.transcript.findIndex((e) => e.id === lineId)
+    if (at < 0) return
+    // The player's own lines have no audio.
+    const items = this.state.transcript
+      .slice(at)
+      .filter((e) => e.speaker !== PLAYER_ID)
+      .map((e) => this.pastItem(e))
+    if (!items.length) return
+    this.opts.audio.ensure()
+    clearTimeout(this.gapTimer)
+    if (this.playback) this.opts.audio.carrierOff()
+    // A live line cut short here plays in full at the end of the replay, since it is already in the transcript.
+    this.stopPlayback()
+    this.replayQueue = items
+    this.quietSince = 0
+    this.set({ replaying: true, paused: false })
+    if (this.state.phase === 'standby') this.start()
+    else this.advance()
+  }
+
+  /** Stops playing past lines and goes back to the live channel. */
+  goLive() {
+    if (!this.state.replaying) return
+    this.replayQueue = []
+    if (this.state.current?.replay) {
+      if (this.playback) this.opts.audio.carrierOff()
+      this.stopPlayback()
+      this.quietSince = performance.now()
+    }
+    this.endReplay()
+    this.set({ activity: 'idle', onAir: null })
+    this.advance()
   }
 
   startTransmit(mode: InputMode) {
@@ -366,6 +410,8 @@ export class Conversation {
     this.batchPending = false
     this.pendingEnding = null
     this.lastItem = null
+    this.played.clear()
+    this.replayQueue = []
     this.opts.audio.carrierOff()
     this.opts.source.reset?.()
     this.state = initialState(this.pickEngine(), initialLog(this.opts.scenario.log?.initial))
@@ -408,7 +454,10 @@ export class Conversation {
 
   private advance() {
     const s = this.state
-    if (s.phase !== 'running' || s.paused || this.playback || this.isTransmitting()) return
+    if (s.paused || this.playback || this.isTransmitting()) return
+    if (this.replayQueue.length) return this.advanceReplay()
+    if (s.replaying) this.endReplay()
+    if (s.phase !== 'running') return
     clearTimeout(this.gapTimer)
 
     const item = this.queue[0]
@@ -437,6 +486,42 @@ export class Conversation {
     this.play(item, false)
     this.prepareAhead()
     if (this.queue.length <= this.opts.refillAt) this.requestBatch()
+  }
+
+  /** Plays the next past line, with a short pause between lines. */
+  private advanceReplay() {
+    clearTimeout(this.gapTimer)
+    const item = this.replayQueue[0]
+    if (!item.ready) {
+      this.set({ activity: 'waiting' })
+      const epoch = this.epoch
+      this.prepare(item).then(() => epoch === this.epoch && this.advance())
+      return
+    }
+    const wait = this.quietSince + this.gaps.reply[0] - performance.now()
+    if (wait > 0) {
+      if (this.state.activity !== 'idle') this.set({ activity: 'idle' })
+      this.gapTimer = setTimeout(() => this.advance(), wait)
+      return
+    }
+    this.replayQueue.shift()
+    this.play(item, true)
+    if (this.replayQueue[0]) void this.prepare(this.replayQueue[0])
+  }
+
+  private endReplay() {
+    // After the closing, the screen goes back to the ending.
+    this.set({ replaying: false, ...(this.state.phase === 'ended' && { current: null }) })
+  }
+
+  /** The queue item for a line that already aired; rebuilt from the transcript after a reload. */
+  private pastItem(entry: TranscriptEntry): QueueItem {
+    let item = this.played.get(entry.id)
+    if (!item) {
+      item = this.makeItem({ id: entry.id, speaker: entry.speaker, segments: entry.segments })
+      this.played.set(entry.id, item)
+    }
+    return item
   }
 
   private requestBatch(playerMessage?: string) {
@@ -547,6 +632,7 @@ export class Conversation {
 
     if (!replay) {
       this.lastItem = item
+      this.played.set(item.line.id, item)
       this.addTranscript({ id: item.line.id, speaker: item.line.speaker, segments: item.line.segments })
       if (item.line.log) {
         this.set({ log: applyLogUpdate(this.state.log, item.line.log, { at: this.elapsed(), lineId: item.line.id }) })
@@ -612,6 +698,8 @@ export class Conversation {
     }
     if (this.playback) this.opts.audio.carrierOff()
     this.stopPlayback()
+    this.replayQueue = []
+    if (this.state.replaying) this.set({ replaying: false })
     this.opts.source.discard?.(this.queue.map((q) => q.line))
     this.queue = []
     this.batchPending = false

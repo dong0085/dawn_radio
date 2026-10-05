@@ -7,7 +7,7 @@ import type { DeviceControls, DeviceViewProps } from './components/device/types'
 import { GearIcon, LogIcon, TranscriptIcon } from './components/icons'
 import { ChannelsPanel, NewChannelPanel } from './components/screen/ChannelsPanel'
 import { DockedLog, LogPanel, type LogTab } from './components/screen/LogPanel'
-import { SettingsPanel, TranscriptPanel } from './components/screen/Panels'
+import { DockedTranscript, SettingsPanel, TranscriptPanel } from './components/screen/Panels'
 import { LiveIndicator, PartyBar, StatusBar, type LiveMode } from './components/screen/StatusBar'
 import { Subtitle } from './components/screen/Subtitle'
 import { MessageView, TransmitView, WordCard } from './components/screen/Views'
@@ -94,8 +94,11 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const fineInput = useMediaQuery('(hover: hover) and (pointer: fine)')
 
   // With room beside the radio, the log sits there, always open, instead of inside the screen.
-  const { logSide, dockFrom } = theme.layout
+  // With more room, the transcript does too, on the other side.
+  const { logSide, dockFrom, transcriptDockFrom } = theme.layout
   const docked = useMediaQuery(`(min-width: ${dockFrom}px)`) && !!scenario.log
+  const transcriptDocked = useMediaQuery(`(min-width: ${transcriptDockFrom}px)`)
+  const transcriptSide = logSide === 'right' ? 'left' : 'right'
 
   const logVersion = state.log.version
   /** Log version the player has seen. Everything after it is new. */
@@ -202,7 +205,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onTalkUp: () => talkMode === 'hold' && void conversation.endTransmit(),
     onPause: () => conversation.togglePause(),
     onReplay: () => conversation.replay(),
-    onTranscript: () => toggle('transcript'),
+    onTranscript: () => !transcriptDocked && toggle('transcript'),
     // Docked, the log is already open: L switches its tab instead.
     onChannels: () => channels && toggle('channels'),
     onLog: () => (docked ? setLogTab((tab) => (tab === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
@@ -212,15 +215,17 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const liveMode: LiveMode =
     phase === 'standby'
       ? 'standby'
-      : phase === 'ended'
-        ? 'off'
-        : transmitting
-          ? 'tx'
-          : paused
-            ? 'paused'
-            : activity === 'waiting'
-              ? 'loading'
-              : 'live'
+      : transmitting
+        ? 'tx'
+        : paused
+          ? 'paused'
+          : state.replaying
+            ? 'replay'
+            : phase === 'ended'
+              ? 'off'
+              : activity === 'waiting'
+                ? 'loading'
+                : 'live'
 
   const led: LedState =
     phase !== 'running' ? 'idle' : transmitting ? 'tx' : activity === 'waiting' && !paused ? 'busy' : 'rx'
@@ -300,9 +305,11 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           body={state.ending.summary}
           actions={
             <>
-              <button type="button" className="chip" onClick={() => setOverlay('transcript')}>
-                {t.transcript}
-              </button>
+              {!transcriptDocked && (
+                <button type="button" className="chip" onClick={() => setOverlay('transcript')}>
+                  {t.transcript}
+                </button>
+              )}
               <button type="button" className="chip chip--primary" onClick={restart}>
                 {t.rejoinChannel}
               </button>
@@ -378,7 +385,27 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const toggleTranslation = () => update('showTranslation', !settings.showTranslation)
   const openLine = (lineId: string) => {
     setTranscriptFocus(lineId)
-    setOverlay('transcript')
+    if (!transcriptDocked) setOverlay('transcript')
+  }
+  /** Plays the channel again from a past line; the in-screen transcript closes so the line shows. */
+  const playFrom = (lineId: string) => {
+    setWordCard(null)
+    if (!transcriptDocked) setOverlay(null)
+    conversation.replayFrom(lineId)
+  }
+  const transcriptProps = {
+    entries: state.transcript,
+    parties: scenario.parties,
+    player: scenario.player,
+    showTranslation: settings.showTranslation,
+    onToggleTranslation: toggleTranslation,
+    liveId: onAir && onAir !== PLAYER_ID ? current?.line.id : undefined,
+    focusId: transcriptFocus,
+    targetLang: scenario.targetLang,
+    onPlayFrom: playFrom,
+    replaying: state.replaying,
+    onGoLive: () => conversation.goLive(),
+    labels: t.transcriptPanel,
   }
 
   const screen = (
@@ -405,13 +432,17 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
                 },
               ]
             : []),
-          {
-            id: 'transcript',
-            label: t.transcript,
-            icon: <TranscriptIcon size={18} />,
-            active: overlay === 'transcript',
-            onClick: () => toggle('transcript'),
-          },
+          ...(!transcriptDocked
+            ? [
+                {
+                  id: 'transcript',
+                  label: t.transcript,
+                  icon: <TranscriptIcon size={18} />,
+                  active: overlay === 'transcript',
+                  onClick: () => toggle('transcript'),
+                },
+              ]
+            : []),
           {
             id: 'settings',
             label: t.settings,
@@ -456,20 +487,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       />
 
       <AnimatePresence>
-        {overlay === 'transcript' && (
-          <TranscriptPanel
-            key="transcript"
-            entries={state.transcript}
-            parties={scenario.parties}
-            player={scenario.player}
-            showTranslation={settings.showTranslation}
-            onToggleTranslation={() => update('showTranslation', !settings.showTranslation)}
-            onClose={() => setOverlay(null)}
-            liveId={onAir && onAir !== PLAYER_ID ? current?.line.id : undefined}
-            focusId={transcriptFocus}
-            targetLang={scenario.targetLang}
-            labels={t.transcriptPanel}
-          />
+        {overlay === 'transcript' && !transcriptDocked && (
+          <TranscriptPanel key="transcript" {...transcriptProps} onClose={() => setOverlay(null)} />
         )}
         {overlay === 'log' && logConfig && !docked && (
           <LogPanel
@@ -590,15 +609,13 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   return (
     <div
       ref={layoutRef}
-      className={`layout${docked ? ` layout--dock-${logSide}` : ''}`}
+      className={`layout${docked || transcriptDocked ? ' layout--docked' : ''}`}
       style={
         {
           ...vars,
           '--device-ratio': skin ? skin.width / skin.height : theme.designWidth / theme.designHeight,
-          // The docked log lines up with the radio's screen.
+          // Docked panels take the radio screen's corners.
           ...(skin && {
-            '--dock-h': `${skin.screen.h * deviceScale}px`,
-            '--dock-shift': `${(skin.screen.y + skin.screen.h / 2 - skin.height / 2) * deviceScale}px`,
             '--dock-r': `${(skin.screen.r ?? 0) * deviceScale}px`,
             // Log text grows with the screen text, a little, so the narrow panel still fits it.
             '--dock-zoom': Math.min(1.2, Math.max(1, (skin.screen.w / skin.screenLayoutWidth) * deviceScale)),
@@ -611,6 +628,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       <div ref={deviceRef} className="layout__device">
         {skin ? <PhotoDevice skin={skin} theme={theme} scale={deviceScale} {...device} /> : <RadioDevice theme={theme} {...device} />}
       </div>
+      {transcriptDocked && <DockedTranscript side={transcriptSide} {...transcriptProps} />}
       {docked && logConfig && (
         <DockedLog
           side={logSide}

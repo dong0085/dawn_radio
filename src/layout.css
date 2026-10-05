@@ -1,4 +1,4 @@
-/* Page layout: the radio, plus the docked log beside it when there is room. */
+/* Page layout: the radio, plus the docked log and transcript beside it when there is room. */
 
 .layout {
   position: fixed;
@@ -6,12 +6,8 @@
   display: flex;
   background: #08090a;
 }
-.layout--dock-left {
-  flex-direction: row-reverse;
-}
-/* Keep the radio and the log together in the middle of wide windows. */
-.layout--dock-left,
-.layout--dock-right {
+.layout--docked {
+  /* Keep the radio and the panels together in the middle of wide windows. */
   justify-content: center;
 }
 
@@ -20,8 +16,7 @@
   flex: 1;
   min-width: 0;
 }
-.layout--dock-left .layout__device,
-.layout--dock-right .layout__device {
+.layout--docked .layout__device {
   /* no wider than the radio at full height (--device-ratio = width / height) */
   max-width: calc(100dvh * var(--device-ratio, 0.5));
 }

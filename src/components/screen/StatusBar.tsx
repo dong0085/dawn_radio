@@ -117,7 +117,7 @@ function PartyName({ name, color, active, side }: PartyLabel & { side: 'left' | 
   )
 }
 
-export type LiveMode = 'live' | 'loading' | 'paused' | 'tx' | 'standby' | 'off'
+export type LiveMode = 'live' | 'loading' | 'paused' | 'tx' | 'standby' | 'off' | 'replay'
 
 export interface LiveIndicatorProps {
   mode: LiveMode
@@ -134,6 +134,7 @@ const defaultLabels: Record<LiveMode, string> = {
   tx: 'TX',
   standby: 'Standby',
   off: 'Off air',
+  replay: 'Replay',
 }
 
 /** "LIVE • • •" marker; becomes an animated waveform while the next lines load. */

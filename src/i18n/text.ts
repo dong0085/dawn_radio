@@ -84,7 +84,7 @@ export const en: UiText = {
   pause: 'Pause',
   play: 'Resume',
   repeat: 'Repeat',
-  live: { live: 'Live', loading: '', paused: 'Paused', tx: 'TX', standby: 'Standby', off: 'Off air' },
+  live: { live: 'Live', loading: '', paused: 'Paused', tx: 'TX', standby: 'Standby', off: 'Off air', replay: 'Replay' },
   notices: {
     garbled: 'Transmission garbled',
     nothingReceived: 'No transmission received',
@@ -116,6 +116,8 @@ export const en: UiText = {
     cutOff: 'cut off',
     empty: 'Nothing on this channel yet.',
     close: 'Close',
+    playFrom: 'Play from here',
+    backToLive: 'Back to live',
   },
   settingsPanel: {
     title: 'Settings',

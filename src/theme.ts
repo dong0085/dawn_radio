@@ -54,7 +54,9 @@ export interface RadioTheme {
     logSide: 'left' | 'right'
     /** Window width (px) from which the log docks beside the radio instead of opening inside its screen. */
     dockFrom: number
-    /** Width (px) of the docked log. */
+    /** Window width (px) from which the transcript also docks, on the other side of the radio. */
+    transcriptDockFrom: number
+    /** Width (px) of each docked panel. */
     dockWidth: number
   }
 }
@@ -89,7 +91,7 @@ export const defaultTheme: RadioTheme = {
     subtitle: "'Figtree', 'Avenir Next', system-ui, sans-serif",
   },
   tracking: { title: '0.05em', caps: '0.1em', wide: '0.14em', print: '0.14em' },
-  layout: { logSide: 'right', dockFrom: 900, dockWidth: 340 },
+  layout: { logSide: 'right', dockFrom: 900, transcriptDockFrom: 1200, dockWidth: 380 },
 }
 
 /** Theme + scenario colors as CSS custom properties, set on the device root. */

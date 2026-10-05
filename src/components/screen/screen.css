@@ -540,6 +540,39 @@
 .transcript__entry.is-live {
   border-left-color: var(--accent);
 }
+.transcript__entry.is-playable {
+  cursor: pointer;
+  transition: background 120ms;
+}
+.transcript__entry.is-playable:hover {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%);
+}
+/* Small play key at the end of the line's name and time; shown on hover, always there on touch screens. */
+.transcript__play {
+  margin-left: auto;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.transcript__entry:hover .transcript__play,
+.transcript__play:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .transcript__play {
+    opacity: 0.7;
+  }
+}
 .transcript__meta {
   display: flex;
   align-items: baseline;
@@ -938,17 +971,15 @@ button.log-timeline__row:hover {
   opacity: 0.6;
 }
 
-/* ---------- Docked log (beside the radio) ---------- */
+/* ---------- Docked panels (log and transcript beside the radio) ---------- */
 
-.docked-log {
+.dock-panel {
   --log-bg: var(--glass);
   position: relative;
-  /* set by the page to line up with the radio's screen */
-  top: var(--dock-shift, 0px);
   flex: none;
   align-self: center;
-  width: var(--dock-w, 340px);
-  height: var(--dock-h, min(860px, calc(100% - 48px)));
+  width: var(--dock-w, 380px);
+  height: min(960px, calc(100% - 48px));
   margin: 24px;
   display: flex;
   flex-direction: column;
@@ -971,37 +1002,39 @@ button.log-timeline__row:hover {
   color: var(--text);
   text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
 }
-.docked-log::before,
-.docked-log::after {
+.dock-panel::before,
+.dock-panel::after {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 5;
 }
-.docked-log::before {
+.dock-panel::before {
   /* scanlines */
   background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0 1.5px, transparent 1.5px 4.5px);
 }
-.docked-log::after {
+.dock-panel::after {
   /* reflection on the glass */
   background:
     linear-gradient(158deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.018) 28%, transparent 42%),
     radial-gradient(ellipse 70% 30% at 85% 105%, rgba(255, 255, 255, 0.035), transparent 70%);
 }
-.docked-log--right {
+.dock-panel--right {
+  order: 1;
   margin-left: 0;
 }
-.docked-log--left {
+.dock-panel--left {
+  order: -1;
   margin-right: 0;
 }
 
-.docked-log__head,
-.docked-log__body {
+.dock-panel__head,
+.dock-panel__body {
   zoom: var(--dock-zoom, 1);
 }
 
-.docked-log__head {
+.dock-panel__head {
   flex: none;
   display: flex;
   align-items: center;
@@ -1011,7 +1044,7 @@ button.log-timeline__row:hover {
   border-bottom: 1px solid var(--line);
 }
 
-.docked-log__body {
+.dock-panel__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1020,7 +1053,7 @@ button.log-timeline__row:hover {
   scrollbar-width: thin;
   scrollbar-color: rgba(140, 220, 210, 0.3) transparent;
 }
-.docked-log__body .log__tabs {
+.dock-panel__body .log__tabs {
   margin: -8px -14px 10px;
   padding: 8px 14px;
 }

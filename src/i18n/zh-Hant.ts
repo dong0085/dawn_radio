@@ -21,7 +21,7 @@ export const zhHant: UiText = {
   pause: '暫停',
   play: '繼續',
   repeat: '重播',
-  live: { live: '直播', loading: '', paused: '已暫停', tx: '發射', standby: '待命', off: '已停播' },
+  live: { live: '直播', loading: '', paused: '已暫停', tx: '發射', standby: '待命', off: '已停播', replay: '回放' },
   notices: {
     garbled: '訊號混亂，沒聽清楚',
     nothingReceived: '沒有收到通話',
@@ -53,6 +53,8 @@ export const zhHant: UiText = {
     cutOff: '被打斷',
     empty: '這個頻道還沒有通話。',
     close: '關閉',
+    playFrom: '從這裡播放',
+    backToLive: '回到直播',
   },
   settingsPanel: {
     title: '設定',

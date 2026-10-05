@@ -21,7 +21,7 @@ export const zhHans: UiText = {
   pause: '暂停',
   play: '继续',
   repeat: '重播',
-  live: { live: '直播', loading: '', paused: '已暂停', tx: '发射', standby: '待命', off: '已停播' },
+  live: { live: '直播', loading: '', paused: '已暂停', tx: '发射', standby: '待命', off: '已停播', replay: '回放' },
   notices: {
     garbled: '信号混乱，没听清',
     nothingReceived: '没有收到通话',
@@ -53,6 +53,8 @@ export const zhHans: UiText = {
     cutOff: '被打断',
     empty: '这个频道还没有通话。',
     close: '关闭',
+    playFrom: '从这里播放',
+    backToLive: '回到直播',
   },
   settingsPanel: {
     title: '设置',
