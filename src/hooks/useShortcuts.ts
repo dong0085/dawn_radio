@@ -7,6 +7,7 @@ export interface ShortcutHandlers {
   onReplay?: () => void
   onTranscript?: () => void
   onLog?: () => void
+  onChannels?: () => void
   onEscape?: () => void
 }
 
@@ -16,11 +17,12 @@ export interface ShortcutKeys {
   replay: string
   transcript: string
   log: string
+  channels: string
 }
 
-export const defaultKeys: ShortcutKeys = { talk: ' ', pause: 'p', replay: 'r', transcript: 't', log: 'l' }
+export const defaultKeys: ShortcutKeys = { talk: ' ', pause: 'p', replay: 'r', transcript: 't', log: 'l', channels: 'c' }
 
-/** Keyboard controls: hold Space to talk, P pause, R repeat, T transcript, L log, Esc close. */
+/** Keyboard controls: hold Space to talk, P pause, R repeat, T transcript, L log, C channels, Esc close. */
 export function useShortcuts(handlers: ShortcutHandlers, keys: ShortcutKeys = defaultKeys) {
   const ref = useRef(handlers)
   useLayoutEffect(() => {
@@ -30,7 +32,7 @@ export function useShortcuts(handlers: ShortcutHandlers, keys: ShortcutKeys = de
   useEffect(() => {
     const typing = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null
-      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
     }
 
     const down = (e: KeyboardEvent) => {
@@ -46,6 +48,7 @@ export function useShortcuts(handlers: ShortcutHandlers, keys: ShortcutKeys = de
       else if (k === keys.replay) h.onReplay?.()
       else if (k === keys.transcript) h.onTranscript?.()
       else if (k === keys.log) h.onLog?.()
+      else if (k === keys.channels) h.onChannels?.()
       else if (k === 'escape') h.onEscape?.()
     }
     const up = (e: KeyboardEvent) => {

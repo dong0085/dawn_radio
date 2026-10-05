@@ -104,7 +104,14 @@ export function useConversation({ scenario, createSource, settings, audio: audio
     audio.setStaticLevel(settings.staticLevel)
   }, [audio, settings.volume, settings.staticLevel])
 
-  useEffect(() => () => conversation.dispose(), [conversation])
+  useEffect(
+    () => () => {
+      conversation.dispose()
+      // Switching channels remounts the radio; free its audio context too.
+      audio.dispose()
+    },
+    [conversation, audio],
+  )
 
   const state = useSyncExternalStore(conversation.subscribe, conversation.getState)
   /** null until /api/config answers. */

@@ -14,6 +14,7 @@
 - **Tap any word** to pause and see what it means in that sentence (DeepL, using the full line as context).
 - **A field log that keeps itself up to date.** People, places, finds and hazards change as the story reveals them, with a timeline of key moments.
 - **It sounds like a real radio.** A Web Audio chain adds a band-pass filter, distortion, hiss, squelch bursts and beeps. Each end of the channel has its own background (cave drips, control-room hum, rain), and weak signals crackle and drop out.
+- **New channels from a short briefing.** Describe a situation ("a ferry loses its radar in fog"), pick a language and level, and Claude writes a new channel: characters, call signs, events, endings, voices and a field log. Channels stay in the browser's memory; tune between them or delete them from the channel list.
 - **Picks up where you left off.** Reload or come back later and the channel waits on standby with a Resume button.
 - **Works with no keys.** Without API keys it falls back to a fixed recording, the browser's own voice, and the browser's speech recognition.
 
@@ -96,6 +97,8 @@ Optional:
 | --- | --- | --- |
 | `CLAUDE_MODEL` | `claude-opus-5-5` | `claude-sonnet-5-5` replies faster |
 | `CLAUDE_EFFORT` | `low` | Lower is faster |
+| `CHANNEL_EFFORT` | `medium` | Effort for writing a new channel (once per channel, so quality over speed) |
+| `CHANNEL_SECRET` | from `ANTHROPIC_API_KEY` | Key that signs new channels; set it to sign independently of the API key |
 | `CLAUDE_THINKING` | on | `off` turns thinking off on Claude Sonnet 5.5, for the fastest first line |
 | `ELEVENLABS_MODEL_ID` | `eleven_v4` | `eleven_v4_turbo` is faster; `eleven_multilingual_v2` ignores delivery cues |
 | `ELEVENLABS_STT_MODEL` | `scribe_v1` | |
@@ -115,6 +118,7 @@ Optional:
 | Talk | Hold the big key | Hold Space |
 | Pause / resume | Round key | P |
 | Repeat line | Speaker grille | R |
+| Channels | Tap the channel name | C |
 | Field log | Screen icon | L |
 | Transcript | Screen icon | T |
 | Close / cancel | ✕ | Esc |
@@ -151,6 +155,8 @@ New secret values take effect on the next deploy (a push, or **Retry deployment*
 ```
 src/
   scenarios/          story data (parties, colors, voices, fixed recording)
+  channels/           channels made from a briefing: storage, building a scenario, the channel list
+  Root.tsx            picks the channel; changing channel mounts a fresh radio
   engine/
     conversation.ts   controller: streamed batches, one-line-ahead voices, pause, replay, push-to-talk
     sources/          where lines come from: ai.ts (Claude), scripted.ts (drill), auto.ts (picks one)
@@ -169,10 +175,12 @@ src/
   api.ts              browser client for /api
 shared/
   stories.ts          story bibles Claude writes from (premise, characters, events, endings)
+  channels.ts         new-channel shapes: languages, levels, voice pool
   api.ts              request/response shapes and limits
 server/               /api routes, shared by the dev server and Cloudflare
   router.ts           /api/config, rate limits, routing
   dialogue.ts         Claude: next lines, translations, log updates, story memory
+  channel.ts          Claude: a new channel from a briefing, signed so its bible can't be swapped
   tts.ts, stt.ts      ElevenLabs voices (whole or streamed) and Scribe
   translate.ts        DeepL
   rateLimit.ts        per-visitor limits
@@ -187,5 +195,6 @@ docs/images/          README screenshots
 - **Field log:** `scenario.log` sets the panel title, sections and starting entries. Each line can carry a `log` update (objective, entries, timeline event), applied when that line starts playing. Leave `log` out to hide the panel.
 - **Photo skin (default):** the radio is drawn from rendered images in `public/skins/nexus/`. `src/skins/nexus.ts` holds the pixel positions of the screen, lights, keys and labels. For a new skin, add images and a new config with the same shape (`PhotoSkin`), then pass it as `<App skin={...} />`.
 - **CSS radio:** `<App skin={null} />` draws the radio entirely in CSS. Colors and fonts come from `theme` (`RadioTheme`).
-- **Live feed for a new story:** add a bible to `shared/stories.ts` with the same id as the story. The server only accepts known story ids.
+- **Live feed for a new story:** add a bible to `shared/stories.ts` with the same id as the story. The server only accepts known story ids, or a channel bible carrying its own signature.
+- **New channels:** `POST /api/channel` writes a bible from a briefing and signs it (HMAC). The browser keeps it and sends it back with each dialogue request; an edited bible fails the check. Languages, levels and the voice pool live in `shared/channels.ts`; panel wording is in `ChannelsPanel.tsx` (`labels` prop).
 - **Other line sources:** implement `LineSource` (`engine/sources/types.ts`) and return it from `createSource` in `App.tsx`.

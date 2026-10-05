@@ -5,6 +5,7 @@ import { PhotoDevice } from './components/device/PhotoDevice'
 import type { LedState } from './components/device/parts'
 import type { DeviceControls, DeviceViewProps } from './components/device/types'
 import { GearIcon, LogIcon, TranscriptIcon } from './components/icons'
+import { ChannelsPanel, NewChannelPanel } from './components/screen/ChannelsPanel'
 import { DockedLog, LogPanel, type LogTab } from './components/screen/LogPanel'
 import { SettingsPanel, TranscriptPanel } from './components/screen/Panels'
 import { LiveIndicator, PartyBar, StatusBar, type LiveMode } from './components/screen/StatusBar'
@@ -29,15 +30,20 @@ import type { ScriptedScenario } from './engine/sources/scripted'
 import { nexusSkin } from './skins/nexus'
 import './layout.css'
 import type { PhotoSkin } from './skins/types'
+import type { ChannelData } from './channels/build'
+import type { ChannelsController } from './channels/useChannels'
 
 export interface AppProps {
-  data?: ScriptedScenario
+  /** The preset (with its recorded script) or a channel made from a briefing. */
+  data?: ScriptedScenario | ChannelData
+  /** Channel list controls; without it the radio stays on one channel. */
+  channels?: ChannelsController
   theme?: RadioTheme
   /** Photo skin for the device; null draws the device in CSS instead. */
   skin?: PhotoSkin | null
 }
 
-type Overlay = 'log' | 'transcript' | 'settings'
+type Overlay = 'log' | 'transcript' | 'settings' | 'channels' | 'new-channel'
 
 const languageName = (tag: string, displayIn: string) => {
   try {
@@ -47,7 +53,7 @@ const languageName = (tag: string, displayIn: string) => {
   }
 }
 
-export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin }: AppProps) {
+export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels }: AppProps) {
   const { scenario } = data
   const [settings, update] = useSettings()
   const { state, conversation, config } = useConversation({
@@ -55,11 +61,14 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     settings,
     // Live feed: Claude writes the lines (when the server has a key); drill: the fixed recording.
     createSource: (getSettings) =>
-      new AutoSource(async () => {
-        const config = await getConfig()
-        const live = getSettings().feed === 'live' && config.dialogue && !!stories[scenario.id]
-        return live ? new AiSource({ storyId: scenario.id }) : new ScriptedSource(data)
-      }),
+      // A channel made from a briefing has no recording, so it is always live.
+      'channel' in data
+        ? new AiSource({ channel: data.channel })
+        : new AutoSource(async () => {
+            const config = await getConfig()
+            const live = getSettings().feed === 'live' && config.dialogue && !!stories[scenario.id]
+            return live ? new AiSource({ storyId: scenario.id }) : new ScriptedSource(data)
+          }),
   })
   const clock = useClock()
   const [overlay, setOverlayState] = useState<Overlay | null>(null)
@@ -155,6 +164,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onReplay: () => conversation.replay(),
     onTranscript: () => toggle('transcript'),
     // Docked, the log is already open: L switches its tab instead.
+    onChannels: () => channels && toggle('channels'),
     onLog: () => (docked ? setLogTab((t) => (t === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
     onEscape: () => (transmitting ? conversation.cancelTransmit() : wordCard ? closeWord() : setOverlay(null)),
   })
@@ -222,9 +232,16 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           title="Standby"
           body={scenario.premise}
           actions={
-            <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
-              Join channel
-            </button>
+            <>
+              {channels && (
+                <button type="button" className="chip" onClick={() => setOverlay('channels')}>
+                  Channels
+                </button>
+              )}
+              <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
+                Join channel
+              </button>
+            </>
           }
         />
       )
@@ -317,6 +334,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const screen = (
     <div className={`screen${phase !== 'standby' ? ' screen--booting' : ''}`} key={phase === 'standby' ? 'off' : 'on'}>
       <StatusBar
+        onTitleClick={channels ? () => toggle('channels') : undefined}
+        titleLabel="Channels"
         incident={scenario.incident}
         title={scenario.title}
         channel={scenario.channel}
@@ -412,6 +431,32 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onClose={() => setOverlay(null)}
             onOpenLine={openLine}
             lang={scenario.targetLang}
+          />
+        )}
+        {overlay === 'channels' && channels && (
+          <ChannelsPanel
+            key="channels"
+            items={channels.items()}
+            currentId={channels.currentId}
+            live={phase === 'running'}
+            nativeLang={scenario.nativeLang}
+            canCreate={!!config?.channels}
+            onSelect={(id) => channels.select(id)}
+            onNew={() => setOverlay('new-channel')}
+            onDelete={(id) => channels.remove(id)}
+            // The radio on this channel would save over a wipe, so it starts fresh instead.
+            onClear={(id) => (id === channels.currentId ? restart() : channels.clear(id))}
+            onClose={() => setOverlay(null)}
+          />
+        )}
+        {overlay === 'new-channel' && channels && (
+          <NewChannelPanel
+            key="new-channel"
+            targetLang={scenario.targetLang}
+            nativeLang={scenario.nativeLang}
+            onCreate={(brief, signal) => channels.create(brief, signal)}
+            onBack={() => setOverlay('channels')}
+            onClose={() => setOverlay(null)}
           />
         )}
         {overlay === 'settings' && (

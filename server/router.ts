@@ -1,4 +1,5 @@
 import type { ApiConfig } from '../shared/api.ts'
+import { handleChannel } from './channel.ts'
 import { handleDialogue, type DialogueEnv } from './dialogue.ts'
 import { json } from './http.ts'
 import { rateLimit } from './rateLimit.ts'
@@ -21,6 +22,7 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
       tts: !!env.ELEVENLABS_API_KEY,
       stt: !!env.ELEVENLABS_API_KEY,
       translate: !!env.DEEPL_API_KEY,
+      channels: !!env.ANTHROPIC_API_KEY,
     } satisfies ApiConfig)
   }
 
@@ -35,6 +37,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
     switch (path) {
       case '/dialogue':
         return await handleDialogue(request, env)
+      case '/channel':
+        return await handleChannel(request, env)
       case '/tts':
         return await handleTts(request, env)
       case '/tts/stream':

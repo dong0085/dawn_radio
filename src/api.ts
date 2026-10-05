@@ -7,6 +7,7 @@ import type {
   SttResponse,
   TranslateResponse,
 } from '../shared/api.ts'
+import type { ChannelRequest, ChannelResponse } from '../shared/channels.ts'
 
 export class ApiError extends Error {
   status: number
@@ -32,7 +33,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   return res
 }
 
-const offline: ApiConfig = { dialogue: false, tts: false, stt: false, translate: false }
+const offline: ApiConfig = { dialogue: false, tts: false, stt: false, translate: false, channels: false }
 let configPromise: Promise<ApiConfig> | null = null
 
 /** What the server has set up. Fetched once; offline defaults if the API is missing. */
@@ -104,6 +105,17 @@ export function translate(text: string[], target: string, opts: { source?: strin
     p.catch(() => translations.delete(key))
   }
   return p
+}
+
+/** Has the server write and sign a new channel from a briefing. Takes 10 to 30 seconds. */
+export async function createChannel(brief: ChannelRequest, signal?: AbortSignal): Promise<ChannelResponse> {
+  const res = await apiFetch('/channel', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(brief),
+    signal,
+  })
+  return res.json()
 }
 
 export async function transcribe(audio: Blob): Promise<SttResponse> {

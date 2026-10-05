@@ -337,6 +337,8 @@ export class Conversation {
     this.stopPlayback()
     this.recognizer?.abort()
     this.micStream?.getTracks().forEach((t) => t.stop())
+    // React's dev double-mount reuses this controller, so let the mic reopen.
+    this.micStream = null
     clearTimeout(this.gapTimer)
     clearTimeout(this.noticeTimer)
   }

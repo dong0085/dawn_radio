@@ -69,6 +69,18 @@ export class RadioAudio {
     return this.ensure()
   }
 
+  /** Close the audio context (browsers allow only a few). The next ensure() builds a new one. */
+  dispose() {
+    this.carrierId++
+    clearTimeout(this.dropoutTimer)
+    this.ambienceSource = null
+    this.ambienceCache.clear()
+    this.micAnalyser = null
+    const ctx = this.ctx
+    this.ctx = null
+    void ctx?.close().catch(() => undefined)
+  }
+
   /** Connect voice audio here to send it through the radio filter. */
   get input(): AudioNode {
     this.ensure()

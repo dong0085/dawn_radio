@@ -1,6 +1,6 @@
 /** Request and response shapes for the /api routes, shared by browser and server. */
 
-import type { Outcome } from './stories.ts'
+import type { Outcome, StoryBible } from './stories.ts'
 
 export interface ApiConfig {
   /** Claude is set up, so the AI can write the story. */
@@ -11,6 +11,8 @@ export interface ApiConfig {
   stt: boolean
   /** DeepL translation is set up. */
   translate: boolean
+  /** New channels can be made from a briefing (needs Claude). */
+  channels: boolean
 }
 
 export interface StoryMemory {
@@ -52,7 +54,10 @@ export interface LogSnapshot {
 }
 
 export interface DialogueRequest {
-  storyId: string
+  /** A built-in story (shared/stories.ts)… */
+  storyId?: string
+  /** …or a channel made by /api/channel, with the server's signature. */
+  channel?: { bible: StoryBible; sig: string }
   /** 0 for the opening batch. */
   batchIndex: number
   memory: StoryMemory
