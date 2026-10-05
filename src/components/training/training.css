@@ -1,0 +1,268 @@
+/* Field training: dimmed page, a targeting bracket on one part, and a card drawn like the radio's screen. */
+
+.training {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.training__shade {
+  position: absolute;
+  inset: 0;
+}
+.training__dim {
+  fill: rgba(1, 7, 7, 0.76);
+}
+.training__leader line {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.7;
+}
+.training__leader circle {
+  fill: var(--accent);
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+
+/* ---------- Targeting bracket ---------- */
+
+.reticle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+.reticle__lock {
+  position: absolute;
+  inset: 0;
+}
+
+.reticle__corner {
+  --arm: 18px;
+  position: absolute;
+  width: var(--arm);
+  height: var(--arm);
+  border: 0 solid var(--accent);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 70%, transparent));
+  animation: reticle-breathe 2.2s ease-in-out infinite;
+}
+.reticle__corner--tl {
+  --out-x: -1;
+  --out-y: -1;
+  left: -5px;
+  top: -5px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+  border-top-left-radius: 6px;
+}
+.reticle__corner--tr {
+  --out-x: 1;
+  --out-y: -1;
+  right: -5px;
+  top: -5px;
+  border-top-width: 2px;
+  border-right-width: 2px;
+  border-top-right-radius: 6px;
+}
+.reticle__corner--bl {
+  --out-x: -1;
+  --out-y: 1;
+  left: -5px;
+  bottom: -5px;
+  border-bottom-width: 2px;
+  border-left-width: 2px;
+  border-bottom-left-radius: 6px;
+}
+.reticle__corner--br {
+  --out-x: 1;
+  --out-y: 1;
+  right: -5px;
+  bottom: -5px;
+  border-bottom-width: 2px;
+  border-right-width: 2px;
+  border-bottom-right-radius: 6px;
+}
+@keyframes reticle-breathe {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(calc(var(--out-x) * 3px), calc(var(--out-y) * 3px)); }
+}
+
+/* a faint line sweeping down the marked part, like a scope scanning it */
+.reticle__scan {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.reticle__scan::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40%;
+  top: -40%;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 14%, transparent) 85%, color-mix(in srgb, var(--accent) 45%, transparent));
+  animation: reticle-scan 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes reticle-scan {
+  0% { top: -40%; }
+  70%, 100% { top: 100%; }
+}
+
+.reticle__tag {
+  position: absolute;
+  left: -5px;
+  bottom: calc(100% + 9px);
+  max-width: 220px;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 16%, rgba(2, 12, 12, 0.85));
+  color: var(--accent);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* no room above the part: the tag sits just inside the top edge */
+.reticle__tag--inside {
+  left: 8px;
+  bottom: auto;
+  top: 8px;
+}
+
+/* ---------- Card ---------- */
+
+.training__card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 12px;
+  background:
+    repeating-linear-gradient(0deg, rgba(140, 220, 210, 0.025) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #071d1c, #030e0d);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 0 24px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.training__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.training__eyebrow,
+.training__count {
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.training__count {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.training__ticks {
+  display: flex;
+  gap: 3px;
+}
+.training__ticks span {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.training__ticks .is-done {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.training__ticks .is-on {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.training__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+.training__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.training__body {
+  margin: 0;
+  font-family: var(--font-sub);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-shadow: none;
+}
+
+.training__keys {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.training__keys kbd {
+  min-width: 22px;
+  padding: 2px 7px 3px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-bottom-width: 2px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--accent);
+  font: 10px var(--font-ui);
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.training__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.training__spacer {
+  flex: 1;
+}
+.training__skip {
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: 9.5px var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.training__skip:hover {
+  color: var(--text);
+}
+.training .chip:focus-visible,
+.training__skip:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}

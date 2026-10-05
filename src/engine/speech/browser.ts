@@ -1,5 +1,5 @@
 import type { Line, Party, TimedWord } from '../../types'
-import { estimateWords, wordIndexAt } from '../words'
+import { estimateWords, pausesAfter, wordIndexAt } from '../words'
 import type { FinishReason, Playback, PreparedSpeech, SpeechProvider } from './types'
 
 export interface BrowserSpeechOptions {
@@ -45,7 +45,7 @@ export class BrowserSpeech implements SpeechProvider {
       duration,
       filtered: false,
       play: () =>
-        speak(words, duration, {
+        speak(words, pausesAfter(line.segments), duration, {
           lang,
           voice,
           rate,
@@ -76,7 +76,8 @@ interface SpeakOptions {
   volume: number
 }
 
-function speak(words: TimedWord[], duration: number, o: SpeakOptions): Playback {
+/** Speaks the words, one phrase at a time when there are pauses (seconds after each word) to keep silent. */
+function speak(words: TimedWord[], pauses: number[], duration: number, o: SpeakOptions): Playback {
   let paused = false
   let done = false
   let pausedAt = 0
@@ -86,11 +87,13 @@ function speak(words: TimedWord[], duration: number, o: SpeakOptions): Playback 
   let finish!: (r: FinishReason) => void
   const finished = new Promise<FinishReason>((r) => (finish = r))
   let safety: ReturnType<typeof setTimeout> | undefined
+  let silence: ReturnType<typeof setTimeout> | undefined
 
   const end = (r: FinishReason) => {
     if (done) return
     done = true
     clearTimeout(safety)
+    clearTimeout(silence)
     finish(r)
   }
 
@@ -99,7 +102,10 @@ function speak(words: TimedWord[], duration: number, o: SpeakOptions): Playback 
 
   const speakFrom = (first: number) => {
     const my = ++token
-    const slice = words.slice(first)
+    // Speak up to the next pause; the rest follows after the silence.
+    let last = first
+    while (last < words.length - 1 && !pauses[last]) last++
+    const slice = words.slice(first, last + 1)
     const offsets: number[] = []
     let text = ''
     for (const w of slice) {
@@ -122,7 +128,12 @@ function speak(words: TimedWord[], duration: number, o: SpeakOptions): Playback 
       anchorAt = performance.now()
     }
     u.onend = () => {
-      if (my === token && !paused) end('ended')
+      if (my !== token || paused) return
+      if (last >= words.length - 1) return end('ended')
+      clearTimeout(safety)
+      anchorPos = words[last].end
+      anchorAt = performance.now()
+      silence = setTimeout(() => my === token && !paused && speakFrom(last + 1), pauses[last] * 1000)
     }
     u.onerror = (e) => {
       if (my !== token || e.error === 'interrupted' || e.error === 'canceled') return
@@ -149,6 +160,7 @@ function speak(words: TimedWord[], duration: number, o: SpeakOptions): Playback 
       paused = true
       token++
       clearTimeout(safety)
+      clearTimeout(silence)
       speechSynthesis.cancel()
     },
     resume() {
@@ -159,6 +171,7 @@ function speak(words: TimedWord[], duration: number, o: SpeakOptions): Playback 
     stop() {
       paused = true
       token++
+      clearTimeout(silence)
       speechSynthesis.cancel()
       end('stopped')
     },

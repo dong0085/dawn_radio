@@ -1,6 +1,6 @@
 /** Request and response shapes for the /api routes, shared by browser and server. */
 
-import type { Outcome } from './stories.ts'
+import type { Outcome, StoryBible } from './stories.ts'
 
 export interface ApiConfig {
   /** Claude is set up, so the AI can write the story. */
@@ -11,6 +11,8 @@ export interface ApiConfig {
   stt: boolean
   /** DeepL translation is set up. */
   translate: boolean
+  /** New channels can be made from a briefing (needs Claude). */
+  channels: boolean
 }
 
 export interface StoryMemory {
@@ -52,7 +54,10 @@ export interface LogSnapshot {
 }
 
 export interface DialogueRequest {
-  storyId: string
+  /** A built-in story (shared/stories.ts)… */
+  storyId?: string
+  /** …or a channel made by /api/channel, with the server's signature. */
+  channel?: { bible: StoryBible; sig: string }
   /** 0 for the opening batch. */
   batchIndex: number
   memory: StoryMemory
@@ -66,7 +71,15 @@ export interface DialogueRequest {
 export interface DialogueSegment {
   text: string
   translation: string
+  /** The text as the voice performs it, with pause tags like [pause]. Only set when it differs from text. */
+  spoken?: string
 }
+
+/** Silence before a transmission: "quick" answers at once, "long" keeps the channel quiet for a while. */
+export type LinePause = 'quick' | 'long'
+
+/** Voice tags that put a silence inside a transmission, and their length in seconds (for voices without tags). */
+export const PAUSE_TAGS = { 'short pause': 0.3, pause: 0.6, 'long pause': 1.1 } as const
 
 export interface DialogueLine {
   speaker: string
@@ -74,6 +87,7 @@ export interface DialogueLine {
   delivery?: string
   /** Radio signal quality of this transmission. */
   signal?: 'strong' | 'fair' | 'weak'
+  pause?: LinePause
   segments: DialogueSegment[]
   log?: DialogueLogUpdate
 }

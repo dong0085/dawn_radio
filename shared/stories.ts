@@ -35,6 +35,12 @@ export interface StoryBible {
   endings: { outcome: Outcome; when: string }[]
   /** Field log sections the writers file entries under (ids match the app's log config). */
   logSections: { id: string; holds: string }[]
+  /** Radio habits of the services involved, e.g. call signs and set phrases in the target language. */
+  radioHabits?: string
+  /** What strong, fair and weak signal mean in this setting. */
+  signalGuide?: string
+  /** One example of confirming a message back, in the target language. */
+  confirmExample?: string
   /** Rough story length in batches of lines. */
   targetBatches: number
   /** No ending before this batch. */
@@ -90,6 +96,9 @@ export const caveRescueBible: StoryBible = {
     { id: 'found', holds: 'clues and items found' },
     { id: 'hazards', holds: 'dangers: weather, water, unstable rock, equipment problems' },
   ],
+  radioHabits: 'Use radio habits from French-speaking rescue services (call signs, "reçu", "à vous", "terminé") lightly, not on every line.',
+  signalGuide: '"strong" (surface, near the entrance), "fair" (inside), "weak" (deep, behind rock, during bad moments)',
+  confirmExample: "Reçu : l'eau monte dans la deuxième galerie.",
   targetBatches: 9,
   minBatches: 5,
 }

@@ -1,16 +1,19 @@
-import { useCallback, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence } from 'motion/react'
 import { RadioDevice } from './components/device/RadioDevice'
 import { PhotoDevice } from './components/device/PhotoDevice'
 import type { LedState } from './components/device/parts'
 import type { DeviceControls, DeviceViewProps } from './components/device/types'
 import { GearIcon, LogIcon, TranscriptIcon } from './components/icons'
+import { ChannelsPanel, NewChannelPanel } from './components/screen/ChannelsPanel'
 import { DockedLog, LogPanel, type LogTab } from './components/screen/LogPanel'
 import { SettingsPanel, TranscriptPanel } from './components/screen/Panels'
 import { LiveIndicator, PartyBar, StatusBar, type LiveMode } from './components/screen/StatusBar'
 import { Subtitle } from './components/screen/Subtitle'
 import { MessageView, TransmitView, WordCard } from './components/screen/Views'
 import { Waveform } from './components/screen/Waveform'
+import { FieldTraining, type TrainingStep } from './components/training/FieldTraining'
+import { markTrainingSeen, trainingSeen } from './components/training/seen'
 import './components/screen/screen.css'
 import { ScriptedSource } from './engine/sources/scripted'
 import { AiSource } from './engine/sources/ai'
@@ -29,15 +32,20 @@ import type { ScriptedScenario } from './engine/sources/scripted'
 import { nexusSkin } from './skins/nexus'
 import './layout.css'
 import type { PhotoSkin } from './skins/types'
+import type { ChannelData } from './channels/build'
+import type { ChannelsController } from './channels/useChannels'
 
 export interface AppProps {
-  data?: ScriptedScenario
+  /** The preset (with its recorded script) or a channel made from a briefing. */
+  data?: ScriptedScenario | ChannelData
+  /** Channel list controls; without it the radio stays on one channel. */
+  channels?: ChannelsController
   theme?: RadioTheme
   /** Photo skin for the device; null draws the device in CSS instead. */
   skin?: PhotoSkin | null
 }
 
-type Overlay = 'log' | 'transcript' | 'settings'
+type Overlay = 'log' | 'transcript' | 'settings' | 'channels' | 'new-channel'
 
 const languageName = (tag: string, displayIn: string) => {
   try {
@@ -47,7 +55,7 @@ const languageName = (tag: string, displayIn: string) => {
   }
 }
 
-export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin }: AppProps) {
+export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels }: AppProps) {
   const { scenario } = data
   const [settings, update] = useSettings()
   const { state, conversation, config } = useConversation({
@@ -55,11 +63,14 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     settings,
     // Live feed: Claude writes the lines (when the server has a key); drill: the fixed recording.
     createSource: (getSettings) =>
-      new AutoSource(async () => {
-        const config = await getConfig()
-        const live = getSettings().feed === 'live' && config.dialogue && !!stories[scenario.id]
-        return live ? new AiSource({ storyId: scenario.id }) : new ScriptedSource(data)
-      }),
+      // A channel made from a briefing has no recording, so it is always live.
+      'channel' in data
+        ? new AiSource({ channel: data.channel })
+        : new AutoSource(async () => {
+            const config = await getConfig()
+            const live = getSettings().feed === 'live' && config.dialogue && !!stories[scenario.id]
+            return live ? new AiSource({ storyId: scenario.id }) : new ScriptedSource(data)
+          }),
   })
   const clock = useClock()
   const [overlay, setOverlayState] = useState<Overlay | null>(null)
@@ -67,6 +78,11 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const [logTab, setLogTab] = useState<LogTab>('now')
   /** Transcript line to scroll to, when opened from the log. */
   const [transcriptFocus, setTranscriptFocus] = useState<string | undefined>()
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const [training, setTraining] = useState(false)
+  /** The channel was playing when training opened, so it plays again after. */
+  const resumeAfterTraining = useRef(false)
+  const fineInput = useMediaQuery('(hover: hover) and (pointer: fine)')
 
   // With room beside the radio, the log sits there, always open, instead of inside the screen.
   const { logSide, dockFrom } = theme.layout
@@ -93,6 +109,30 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     setOverlay(null)
     setSeenVersion(0)
     conversation.restart()
+  }
+
+  // First visit: open the training once the radio is on screen. Returning listeners (with a saved session) skip it.
+  const firstVisit = useRef(!trainingSeen() && state.phase === 'standby' && !state.resumed)
+  useEffect(() => {
+    if (!firstVisit.current) return
+    const timer = setTimeout(() => setTraining(true), 700)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const openTraining = () => {
+    setOverlay(null)
+    setWordCard(null)
+    resumeAfterTraining.current = state.phase === 'running' && !state.paused
+    if (resumeAfterTraining.current) conversation.pause()
+    setTraining(true)
+  }
+  const finishTraining = (completed: boolean) => {
+    markTrainingSeen()
+    firstVisit.current = false
+    setTraining(false)
+    if (resumeAfterTraining.current) conversation.resume()
+    else if (completed && state.phase === 'standby') conversation.start()
+    resumeAfterTraining.current = false
   }
 
   const [left, right] = (['left', 'right'] as const).map((side) => scenario.parties.find((p) => p.side === side)!) as [Party, Party]
@@ -155,6 +195,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onReplay: () => conversation.replay(),
     onTranscript: () => toggle('transcript'),
     // Docked, the log is already open: L switches its tab instead.
+    onChannels: () => channels && toggle('channels'),
     onLog: () => (docked ? setLogTab((t) => (t === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
     onEscape: () => (transmitting ? conversation.cancelTransmit() : wordCard ? closeWord() : setOverlay(null)),
   })
@@ -222,9 +263,16 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           title="Standby"
           body={scenario.premise}
           actions={
-            <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
-              Join channel
-            </button>
+            <>
+              {channels && (
+                <button type="button" className="chip" onClick={() => setOverlay('channels')}>
+                  Channels
+                </button>
+              )}
+              <button type="button" className="chip chip--primary" data-tour="join" onClick={() => conversation.start()}>
+                Join channel
+              </button>
+            </>
           }
         />
       )
@@ -317,6 +365,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const screen = (
     <div className={`screen${phase !== 'standby' ? ' screen--booting' : ''}`} key={phase === 'standby' ? 'off' : 'on'}>
       <StatusBar
+        onTitleClick={channels ? () => toggle('channels') : undefined}
+        titleLabel="Channels"
         incident={scenario.incident}
         title={scenario.title}
         channel={scenario.channel}
@@ -359,7 +409,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           right={{ name: right.name, color: right.color, active: onAir === right.id }}
           center={<LiveIndicator mode={liveMode} />}
         />
-        <div className="main-panel__content">
+        <div className="main-panel__content" data-tour="subtitles">
           <AnimatePresence mode="wait">{content}</AnimatePresence>
           {notice && !wordCard && <span className="notice">{notice}</span>}
           <AnimatePresence>
@@ -414,6 +464,32 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             lang={scenario.targetLang}
           />
         )}
+        {overlay === 'channels' && channels && (
+          <ChannelsPanel
+            key="channels"
+            items={channels.items()}
+            currentId={channels.currentId}
+            live={phase === 'running'}
+            nativeLang={scenario.nativeLang}
+            canCreate={!!config?.channels}
+            onSelect={(id) => channels.select(id)}
+            onNew={() => setOverlay('new-channel')}
+            onDelete={(id) => channels.remove(id)}
+            // The radio on this channel would save over a wipe, so it starts fresh instead.
+            onClear={(id) => (id === channels.currentId ? restart() : channels.clear(id))}
+            onClose={() => setOverlay(null)}
+          />
+        )}
+        {overlay === 'new-channel' && channels && (
+          <NewChannelPanel
+            key="new-channel"
+            targetLang={scenario.targetLang}
+            nativeLang={scenario.nativeLang}
+            onCreate={(brief, signal) => channels.create(brief, signal)}
+            onBack={() => setOverlay('channels')}
+            onClose={() => setOverlay(null)}
+          />
+        )}
         {overlay === 'settings' && (
           <SettingsPanel
             key="settings"
@@ -423,6 +499,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onRestart={restart}
             engineStatus={engineStatus}
             feedNote={config && !config.dialogue ? 'Live feed offline' : 'Applies when you rejoin'}
+            onTraining={openTraining}
             targetLabel={languageName(scenario.targetLang, scenario.nativeLang)}
             nativeLabel={languageName(scenario.nativeLang, scenario.nativeLang)}
           />
@@ -441,8 +518,63 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     controls,
   }
 
+  const targetName = languageName(scenario.targetLang, scenario.nativeLang)
+  const nativeName = languageName(scenario.nativeLang, scenario.nativeLang)
+  const trainingSteps: TrainingStep[] = [
+    {
+      target: null,
+      title: 'Welcome to the channel',
+      body: `This radio picks up a live channel. Two teams talk in ${targetName} as things happen. Listen in, and break in whenever you like.`,
+    },
+    {
+      target: 'subtitles',
+      title: 'Follow every word',
+      body: `Each transmission appears here word by word, with the ${nativeName} translation underneath. Tap any word to see what it means.`,
+    },
+    {
+      target: 'talk',
+      title: 'Break in',
+      body:
+        talkMode === 'toggle'
+          ? `Tap this key and type your message. Write in ${targetName}, ${nativeName} or a mix; the teams answer in ${targetName}.`
+          : `Hold this key and speak, then let go to send. Use ${targetName}, ${nativeName} or a mix; the teams answer in ${targetName}.`,
+      keys: [talkMode === 'toggle' ? 'Space' : 'Hold Space'],
+    },
+    {
+      target: 'pause',
+      title: 'Pause',
+      body: 'Stop the channel to catch your breath or reread a line. Press again to carry on.',
+      keys: ['P'],
+      shape: 'round',
+    },
+    {
+      target: 'replay',
+      title: 'Repeat',
+      body: 'Missed something? Tap the speaker grille to hear the last transmission again.',
+      keys: ['R'],
+    },
+    {
+      target: 'log',
+      title: scenario.log?.title ?? 'Field log',
+      body: 'People, places and events are tracked here as things change. A dot on the key means something new.',
+      keys: ['L'],
+    },
+    {
+      target: 'channels',
+      title: 'Channels',
+      body: 'Tap the channel name to switch channels, or set up your own from a short briefing.',
+      keys: ['C'],
+    },
+    {
+      target: 'join',
+      title: 'Ready?',
+      body: 'Join the channel when you are ready. You can run this training again from Settings.',
+    },
+  ]
+
   return (
     <div
+      ref={layoutRef}
       className={`layout${docked ? ` layout--dock-${logSide}` : ''}`}
       style={
         {
@@ -467,6 +599,15 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           onToggleTranslation={toggleTranslation}
           onOpenLine={openLine}
           lang={scenario.targetLang}
+        />
+      )}
+      {training && (
+        <FieldTraining
+          steps={trainingSteps}
+          root={layoutRef}
+          onFinish={finishTraining}
+          finishLabel={phase === 'standby' && !state.resumed ? 'Join channel' : undefined}
+          showKeys={fineInput}
         />
       )}
     </div>

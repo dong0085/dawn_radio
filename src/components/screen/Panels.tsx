@@ -159,6 +159,10 @@ export interface SettingsPanelProps {
   restartLabel?: string
   /** Small note under the Feed row. */
   feedNote?: string
+  /** Opens the field training again; the row is hidden without it. */
+  onTraining?: () => void
+  trainingLabel?: string
+  trainingAction?: string
 }
 
 export function SettingsPanel({
@@ -171,6 +175,9 @@ export function SettingsPanel({
   nativeLabel,
   restartLabel = 'Rejoin channel',
   feedNote,
+  onTraining,
+  trainingLabel = 'Field training',
+  trainingAction = 'Start',
 }: SettingsPanelProps) {
   const onOff = [
     { value: 1, label: 'On' },
@@ -256,6 +263,13 @@ export function SettingsPanel({
             onChange={(v) => update('micLanguage', v)}
           />
         </Row>
+        {onTraining && (
+          <Row label={trainingLabel}>
+            <button type="button" className="chip" onClick={onTraining}>
+              {trainingAction}
+            </button>
+          </Row>
+        )}
         <button type="button" className="settings__restart" onClick={onRestart}>
           {restartLabel}
         </button>

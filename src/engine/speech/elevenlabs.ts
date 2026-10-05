@@ -2,7 +2,7 @@ import { TTS_STREAM_SAMPLE_RATE } from '../../../shared/api.ts'
 import { apiFetch, ApiError, readNdjson } from '../../api'
 import type { Line, Party } from '../../types'
 import type { RadioAudio } from '../radioAudio'
-import { lineText, wordsFromAlignment, type CharAlignment } from '../words'
+import { spokenText, wordsFromAlignment, type CharAlignment } from '../words'
 import { playStream, StreamedClip } from './stream'
 import type { FinishReason, Playback, PreparedSpeech, SpeechProvider } from './types'
 
@@ -46,7 +46,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
   }
 
   async prepare(line: Line, party: Party | undefined, lang: string): Promise<PreparedSpeech> {
-    const text = lineText(line.segments)
+    const text = spokenText(line.segments)
     const voiceId = party?.voice.elevenLabsVoiceId ?? this.opts.fallbackVoiceId ?? 'JBFqnCBsd6RMkjVDRZzb'
     const speed = this.opts.speed?.() ?? 1
     const key = `${voiceId}|${speed}|${line.delivery ?? ''}|${text}`
@@ -127,7 +127,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
   }
 
   private body(line: Line, voiceId: string, lang: string, speed: number) {
-    return { text: lineText(line.segments), voiceId, languageCode: lang.split('-')[0], speed, delivery: line.delivery }
+    return { text: spokenText(line.segments), voiceId, languageCode: lang.split('-')[0], speed, delivery: line.delivery }
   }
 
   private async fetchAudio(text: string, voiceId: string, lang: string, speed: number, line?: Line) {

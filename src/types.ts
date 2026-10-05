@@ -1,4 +1,5 @@
 import type { AmbienceSpec } from './engine/ambience'
+import type { LinePause } from '../shared/api.ts'
 /** The player is always the third participant on the channel. */
 export const PLAYER_ID = 'player'
 
@@ -42,6 +43,8 @@ export interface PlayerConfig {
 export interface Segment {
   text: string
   translation: string
+  /** The text as the voice performs it, with pause tags like [pause]. Defaults to text. */
+  spoken?: string
 }
 
 export interface Line {
@@ -52,6 +55,8 @@ export interface Line {
   delivery?: string
   /** Signal strength for this transmission, 0–1 (defaults to the party's). */
   signal?: number
+  /** Silence before this transmission: "quick" answers at once, "long" keeps the channel quiet for a while. */
+  pause?: LinePause
   /** Changes to the log, applied when this line starts playing. */
   log?: LogUpdate
 }

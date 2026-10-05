@@ -1,11 +1,13 @@
-import type { HistoryLine, LogSnapshot, StoryMemory } from '../../../shared/api.ts'
+import type { DialogueRequest, HistoryLine, LogSnapshot, StoryMemory } from '../../../shared/api.ts'
 import { streamDialogue } from '../../api'
 import { PLAYER_ID, type Line, type LogState, type TranscriptEntry } from '../../types'
 import type { Batch, BatchRequest, LineSource, NextOptions } from './types'
 
 export interface AiSourceOptions {
-  /** Story id known to the server (shared/stories.ts). */
-  storyId: string
+  /** Story id known to the server (shared/stories.ts)… */
+  storyId?: string
+  /** …or a channel the server made and signed. */
+  channel?: DialogueRequest['channel']
   /** How many recent lines to send word for word; older ones live in the summary. */
   recentLines?: number
 }
@@ -42,7 +44,7 @@ export class AiSource implements LineSource {
   private batchIndex = 0
   /** Memory before the last batch, to roll back if that batch never airs. */
   private previous: { memory: StoryMemory; batchIndex: number; ids: Set<string> } | null = null
-  private opts: Required<AiSourceOptions>
+  private opts: AiSourceOptions & { recentLines: number }
 
   constructor(options: AiSourceOptions) {
     this.opts = { recentLines: 24, ...options }
@@ -53,6 +55,7 @@ export class AiSource implements LineSource {
     const res = await streamDialogue(
       {
         storyId: this.opts.storyId,
+        channel: this.opts.channel,
         batchIndex: this.batchIndex,
         memory: this.memory,
         // Queued lines will air first, so the writers continue after them.

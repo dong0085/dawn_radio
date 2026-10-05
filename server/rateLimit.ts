@@ -8,6 +8,8 @@
 /** Requests per minute per visitor. Normal listening uses a fraction of these. */
 export const PER_MINUTE: Record<string, number> = {
   '/dialogue': 10,
+  // Each new channel is a full Claude request with nothing else gating it, so keep this tight.
+  '/channel': 2,
   '/tts': 40,
   '/tts/stream': 40,
   '/stt': 20,

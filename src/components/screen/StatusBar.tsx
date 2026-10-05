@@ -21,19 +21,44 @@ export interface StatusBarProps {
   signal?: number
   battery?: number
   actions?: StatusAction[]
+  /** Makes the channel name a key, e.g. to open the channel list. */
+  onTitleClick?: () => void
+  titleLabel?: string
 }
 
-export function StatusBar({ incident, title, channel, frequency, clock, signal = 4, battery = 0.8, actions = [] }: StatusBarProps) {
+export function StatusBar({
+  incident,
+  title,
+  channel,
+  frequency,
+  clock,
+  signal = 4,
+  battery = 0.8,
+  actions = [],
+  onTitleClick,
+  titleLabel,
+}: StatusBarProps) {
+  const info = (
+    <>
+      <span className="status__incident">{incident}</span>
+      <span className="status__title">{title}</span>
+      <span className="status__freq">
+        {channel}
+        <span>{frequency}</span>
+      </span>
+    </>
+  )
   return (
     <div className="status panel">
-      <div className="status__info">
-        <span className="status__incident">{incident}</span>
-        <span className="status__title">{title}</span>
-        <span className="status__freq">
-          {channel}
-          <span>{frequency}</span>
-        </span>
-      </div>
+      {onTitleClick ? (
+        <button type="button" className="status__info status__info--key" data-tour="channels" onClick={onTitleClick} aria-label={titleLabel} title={titleLabel}>
+          {info}
+        </button>
+      ) : (
+        <div className="status__info" data-tour="channels">
+          {info}
+        </div>
+      )}
       <div className="status__meters">
         <SignalIcon size={14} bars={signal} />
         <BatteryIcon size={18} level={battery} />
@@ -45,6 +70,7 @@ export function StatusBar({ incident, title, channel, frequency, clock, signal =
             key={a.id}
             type="button"
             className={`screen-key${a.active ? ' is-active' : ''}`}
+            data-tour={a.id}
             onClick={a.onClick}
             aria-label={a.label}
             aria-pressed={a.active}

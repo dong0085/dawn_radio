@@ -36,6 +36,7 @@ export function PauseButton({ paused, onToggle, pauseLabel = 'Pause', resumeLabe
       <button
         type="button"
         className="round-button"
+        data-tour="pause"
         style={{ width: size, height: size }}
         onClick={onToggle}
         aria-label={label}
@@ -82,6 +83,7 @@ export function TalkButton({
         <button
           type="button"
           className="ptt__key"
+          data-tour="talk"
           disabled={disabled}
           aria-pressed={pressed}
           aria-label={label}
@@ -117,7 +119,7 @@ export interface ReplayGrilleProps {
 export function ReplayGrille({ onReplay, disabled, label = 'Repeat', slots = 6 }: ReplayGrilleProps) {
   return (
     <div className="hw-control">
-      <button type="button" className="grille" onClick={onReplay} disabled={disabled} aria-label={`${label} last line`}>
+      <button type="button" className="grille" data-tour="replay" onClick={onReplay} disabled={disabled} aria-label={`${label} last line`}>
         <span className="grille__slots" aria-hidden>
           {Array.from({ length: slots }, (_, i) => <span key={i} />)}
         </span>

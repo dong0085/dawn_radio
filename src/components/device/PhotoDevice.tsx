@@ -64,6 +64,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
     <div ref={stageRef} className={`stage stage--photo ${className}`} style={{ ...style, background: skin.backdrop }}>
       <div
         className="photo-device"
+        data-tour="radio"
         style={
           {
             width: skin.width,
@@ -122,6 +123,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
         <button
           type="button"
           className="photo-key photo-key--round"
+          data-tour="pause"
           style={{ left: pause.center.x - pr, top: pause.center.y - pr, width: pr * 2, height: pr * 2 }}
           onClick={controls.onPauseToggle}
           aria-label={pauseLabel}
@@ -150,6 +152,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
         <button
           type="button"
           className={`photo-key photo-key--talk${talk.pressed ? ' is-pressed' : ''}`}
+          data-tour="talk"
           style={box(talkSkin.key)}
           disabled={talk.disabled}
           aria-pressed={talk.pressed}
@@ -172,6 +175,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
         <button
           type="button"
           className="photo-key photo-key--grille"
+          data-tour="replay"
           style={{ ...box(skin.replay.area), clipPath: skin.replay.clip }}
           onClick={replay.onReplay}
           disabled={replay.disabled}

@@ -61,8 +61,27 @@ export interface ConversationOptions {
   refillAt?: number
   /** How many upcoming lines get their audio prepared while the current one plays. */
   lookahead?: number
-  /** Silence between lines, in ms (random within range). */
-  gapMs?: [number, number]
+  /** Silence on the channel before each line, in ms (random within each range). */
+  gaps?: Partial<GapRanges>
+}
+
+/** Ranges in ms, [min, max]. */
+export interface GapRanges {
+  /** The other party answers. */
+  reply: [number, number]
+  /** The same party transmits again. */
+  followUp: [number, number]
+  /** The line is marked "quick": an instant answer. */
+  quick: [number, number]
+  /** The line is marked "long": the speaker hesitates, is busy, or takes a moment. */
+  long: [number, number]
+}
+
+export const DEFAULT_GAPS: GapRanges = {
+  reply: [700, 1400],
+  followUp: [900, 1800],
+  quick: [200, 450],
+  long: [2200, 3800],
 }
 
 interface QueueItem {
@@ -70,6 +89,8 @@ interface QueueItem {
   /** Audio being prepared; created only when the line is close to airing. */
   prepared?: Promise<PreparedSpeech>
   ready?: PreparedSpeech
+  /** Silence before this line, in ms; picked once, when it is next in line. */
+  gap?: number
 }
 
 const initialState = (engine: SpeechEngine, log: LogState): ConversationState => ({
@@ -95,7 +116,8 @@ const initialState = (engine: SpeechEngine, log: LogState): ConversationState =>
 export class Conversation {
   private state: ConversationState
   private listeners = new Set<() => void>()
-  private opts: Required<Pick<ConversationOptions, 'refillAt' | 'gapMs' | 'lookahead'>> & ConversationOptions
+  private opts: Required<Pick<ConversationOptions, 'refillAt' | 'lookahead'>> & ConversationOptions
+  private gaps: GapRanges
 
   private queue: QueueItem[] = []
   private epoch = 0
@@ -106,6 +128,8 @@ export class Conversation {
   private playback: Playback | null = null
   private playingItem: QueueItem | null = null
   private lastItem: QueueItem | null = null
+  /** When the channel last went quiet (a line or the player's transmission ended), from performance.now(). */
+  private quietSince = 0
   private gapTimer: ReturnType<typeof setTimeout> | undefined
   private noticeTimer: ReturnType<typeof setTimeout> | undefined
   private raf = 0
@@ -121,7 +145,8 @@ export class Conversation {
   settings: Settings
 
   constructor(options: ConversationOptions) {
-    this.opts = { refillAt: 3, lookahead: 1, gapMs: [450, 1000], ...options }
+    this.opts = { refillAt: 3, lookahead: 1, ...options }
+    this.gaps = { ...DEFAULT_GAPS, ...options.gaps }
     this.settings = options.settings
     this.state = initialState('browser', initialLog(options.scenario.log?.initial))
   }
@@ -240,7 +265,9 @@ export class Conversation {
       this.recognizer = null
       if (epoch !== this.epoch) return
     }
+    this.releaseMic()
     this.opts.audio.beep('tx-end')
+    this.quietSince = performance.now()
     text = text.trim()
     this.set({ onAir: null, txMode: null })
 
@@ -267,6 +294,7 @@ export class Conversation {
     if (!this.isTransmitting()) return
     this.recognizer?.abort()
     this.recognizer = null
+    this.releaseMic()
     this.set({ activity: 'idle', onAir: null, txText: '', txMode: null })
     this.advance()
   }
@@ -309,6 +337,7 @@ export class Conversation {
     this.stopPlayback()
     this.recognizer?.abort()
     this.recognizer = null
+    this.releaseMic()
     clearTimeout(this.gapTimer)
     this.queue = []
     this.batchPending = false
@@ -336,7 +365,7 @@ export class Conversation {
     this.epoch++
     this.stopPlayback()
     this.recognizer?.abort()
-    this.micStream?.getTracks().forEach((t) => t.stop())
+    this.releaseMic()
     clearTimeout(this.gapTimer)
     clearTimeout(this.noticeTimer)
   }
@@ -370,6 +399,14 @@ export class Conversation {
       this.set({ activity: 'waiting' })
       const epoch = this.epoch
       this.prepare(item).then(() => epoch === this.epoch && this.advance())
+      return
+    }
+    // Let the channel stay quiet for a moment, like people taking turns.
+    item.gap ??= this.pickGap(item.line)
+    const wait = this.quietSince + item.gap - performance.now()
+    if (wait > 0) {
+      if (s.activity !== 'idle') this.set({ activity: 'idle' })
+      this.gapTimer = setTimeout(() => this.advance(), wait)
       return
     }
 
@@ -435,6 +472,13 @@ export class Conversation {
         this.flash('Signal lost. Retrying…')
         this.gapTimer = setTimeout(() => this.advance(), 3000)
       })
+  }
+
+  /** Silence before a line: set by the writers, or by whether the speaker changes. */
+  private pickGap(line: Line) {
+    const previous = this.state.transcript[this.state.transcript.length - 1]?.speaker
+    const [min, max] = line.pause ? this.gaps[line.pause] : line.speaker === previous ? this.gaps.followUp : this.gaps.reply
+    return min + Math.random() * (max - min)
   }
 
   private makeItem(line: Line): QueueItem {
@@ -504,8 +548,8 @@ export class Conversation {
       const current = this.state.current && { ...this.state.current, wordIndex: speech.words.length }
       this.set({ onAir: null, current, activity: reason === 'ended' ? 'idle' : this.state.activity })
       if (reason !== 'ended') return
-      const [min, max] = this.opts.gapMs
-      this.gapTimer = setTimeout(() => this.advance(), min + Math.random() * (max - min))
+      this.quietSince = performance.now()
+      this.advance()
     })
   }
 
@@ -571,21 +615,41 @@ export class Conversation {
 
   private micPromise: Promise<MediaStream> | null = null
 
-  /** Opens the microphone once and keeps it, so later presses start instantly. */
+  /**
+   * Opens the microphone for one transmission. releaseMic() closes it again: while a mic is
+   * open, iOS routes all audio through the call channel (earpiece volume, much louder).
+   */
   private ensureMic(): Promise<MediaStream> {
     if (!navigator.mediaDevices?.getUserMedia) return Promise.reject(new Error('No microphone access'))
-    this.micPromise ??= navigator.mediaDevices
+    if (this.micPromise) return this.micPromise
+    setAudioSession('play-and-record')
+    const p: Promise<MediaStream> = navigator.mediaDevices
       .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
       .then((stream) => {
+        // Released before the mic finished opening (a quick tap): close it right away.
+        if (this.micPromise !== p) {
+          stream.getTracks().forEach((t) => t.stop())
+          return stream
+        }
         this.micStream = stream
         this.opts.audio.attachMic(stream)
         return stream
       })
-    this.micPromise.catch((err) => {
+    this.micPromise = p
+    p.catch((err) => {
       console.warn('[conversation] mic unavailable', err)
-      this.micPromise = null
+      if (this.micPromise === p) this.releaseMic()
     })
-    return this.micPromise
+    return p
+  }
+
+  private releaseMic() {
+    if (!this.micPromise) return
+    this.micStream?.getTracks().forEach((t) => t.stop())
+    this.micStream = null
+    this.micPromise = null
+    this.opts.audio.detachMic()
+    setAudioSession('playback')
   }
 
   /** Adds the target-language version and translation to the player's last line. */
@@ -601,4 +665,13 @@ export class Conversation {
       ),
     })
   }
+}
+
+/**
+ * Safari's Audio Session API (iOS 16.4+). After the mic closes, 'playback' moves audio
+ * back from the call channel to the normal media speaker and volume.
+ */
+function setAudioSession(type: 'playback' | 'play-and-record') {
+  const session = (navigator as { audioSession?: { type: string } }).audioSession
+  if (session) session.type = type
 }
