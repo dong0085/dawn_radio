@@ -61,8 +61,27 @@ export interface ConversationOptions {
   refillAt?: number
   /** How many upcoming lines get their audio prepared while the current one plays. */
   lookahead?: number
-  /** Silence between lines, in ms (random within range). */
-  gapMs?: [number, number]
+  /** Silence on the channel before each line, in ms (random within each range). */
+  gaps?: Partial<GapRanges>
+}
+
+/** Ranges in ms, [min, max]. */
+export interface GapRanges {
+  /** The other party answers. */
+  reply: [number, number]
+  /** The same party transmits again. */
+  followUp: [number, number]
+  /** The line is marked "quick": an instant answer. */
+  quick: [number, number]
+  /** The line is marked "long": the speaker hesitates, is busy, or takes a moment. */
+  long: [number, number]
+}
+
+export const DEFAULT_GAPS: GapRanges = {
+  reply: [700, 1400],
+  followUp: [900, 1800],
+  quick: [200, 450],
+  long: [2200, 3800],
 }
 
 interface QueueItem {
@@ -70,6 +89,8 @@ interface QueueItem {
   /** Audio being prepared; created only when the line is close to airing. */
   prepared?: Promise<PreparedSpeech>
   ready?: PreparedSpeech
+  /** Silence before this line, in ms; picked once, when it is next in line. */
+  gap?: number
 }
 
 const initialState = (engine: SpeechEngine, log: LogState): ConversationState => ({
@@ -95,7 +116,8 @@ const initialState = (engine: SpeechEngine, log: LogState): ConversationState =>
 export class Conversation {
   private state: ConversationState
   private listeners = new Set<() => void>()
-  private opts: Required<Pick<ConversationOptions, 'refillAt' | 'gapMs' | 'lookahead'>> & ConversationOptions
+  private opts: Required<Pick<ConversationOptions, 'refillAt' | 'lookahead'>> & ConversationOptions
+  private gaps: GapRanges
 
   private queue: QueueItem[] = []
   private epoch = 0
@@ -106,6 +128,8 @@ export class Conversation {
   private playback: Playback | null = null
   private playingItem: QueueItem | null = null
   private lastItem: QueueItem | null = null
+  /** When the channel last went quiet (a line or the player's transmission ended), from performance.now(). */
+  private quietSince = 0
   private gapTimer: ReturnType<typeof setTimeout> | undefined
   private noticeTimer: ReturnType<typeof setTimeout> | undefined
   private raf = 0
@@ -121,7 +145,8 @@ export class Conversation {
   settings: Settings
 
   constructor(options: ConversationOptions) {
-    this.opts = { refillAt: 3, lookahead: 1, gapMs: [450, 1000], ...options }
+    this.opts = { refillAt: 3, lookahead: 1, ...options }
+    this.gaps = { ...DEFAULT_GAPS, ...options.gaps }
     this.settings = options.settings
     this.state = initialState('browser', initialLog(options.scenario.log?.initial))
   }
@@ -242,6 +267,7 @@ export class Conversation {
     }
     this.releaseMic()
     this.opts.audio.beep('tx-end')
+    this.quietSince = performance.now()
     text = text.trim()
     this.set({ onAir: null, txMode: null })
 
@@ -375,6 +401,14 @@ export class Conversation {
       this.prepare(item).then(() => epoch === this.epoch && this.advance())
       return
     }
+    // Let the channel stay quiet for a moment, like people taking turns.
+    item.gap ??= this.pickGap(item.line)
+    const wait = this.quietSince + item.gap - performance.now()
+    if (wait > 0) {
+      if (s.activity !== 'idle') this.set({ activity: 'idle' })
+      this.gapTimer = setTimeout(() => this.advance(), wait)
+      return
+    }
 
     this.queue.shift()
     this.play(item, false)
@@ -438,6 +472,13 @@ export class Conversation {
         this.flash('Signal lost. Retrying…')
         this.gapTimer = setTimeout(() => this.advance(), 3000)
       })
+  }
+
+  /** Silence before a line: set by the writers, or by whether the speaker changes. */
+  private pickGap(line: Line) {
+    const previous = this.state.transcript[this.state.transcript.length - 1]?.speaker
+    const [min, max] = line.pause ? this.gaps[line.pause] : line.speaker === previous ? this.gaps.followUp : this.gaps.reply
+    return min + Math.random() * (max - min)
   }
 
   private makeItem(line: Line): QueueItem {
@@ -507,8 +548,8 @@ export class Conversation {
       const current = this.state.current && { ...this.state.current, wordIndex: speech.words.length }
       this.set({ onAir: null, current, activity: reason === 'ended' ? 'idle' : this.state.activity })
       if (reason !== 'ended') return
-      const [min, max] = this.opts.gapMs
-      this.gapTimer = setTimeout(() => this.advance(), min + Math.random() * (max - min))
+      this.quietSince = performance.now()
+      this.advance()
     })
   }
 

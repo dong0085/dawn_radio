@@ -7,8 +7,10 @@ import {
   type DialogueLogUpdate,
   type DialogueRequest,
   type HistoryLine,
+  type LinePause,
   type LogSnapshot,
   type LogTone,
+  PAUSE_TAGS,
 } from '../shared/api.ts'
 import { stories, type StoryBible } from '../shared/stories.ts'
 import { verifyChannel, type ChannelEnv } from './channel.ts'
@@ -26,11 +28,13 @@ export interface DialogueEnv extends ChannelEnv {
 
 const LINES_PER_BATCH = 4
 /** Delivery cues the voice model performs (sent to ElevenLabs as [tags], hidden from subtitles). */
-const DELIVERIES = ['', 'calm', 'urgent', 'whispers', 'out of breath', 'shouts', 'relieved', 'worried', 'tired', 'excited'] as const
+const DELIVERIES = ['', 'calm', 'urgent', 'whispers', 'out of breath', 'shouts', 'relieved', 'worried', 'tired', 'excited', 'hesitant'] as const
 type Delivery = (typeof DELIVERIES)[number]
 /** Radio signal quality of a transmission. */
 const SIGNALS = ['strong', 'fair', 'weak'] as const
 type Signal = (typeof SIGNALS)[number]
+/** Silence on the channel before a transmission ("" is a normal reply). */
+const PAUSES = ['', 'quick', 'long'] as const
 const TONES: LogTone[] = ['active', 'ok', 'warn', 'alert', 'done']
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 type Effort = (typeof EFFORTS)[number]
@@ -47,8 +51,16 @@ function systemPrompt(story: StoryBible) {
 - Every transmission is in ${target} at CEFR ${story.level}: short sentences, common words, natural spoken radio style. Reuse key words across lines; repetition helps learners.
 - Split each transmission into segments of one sentence (or one short phrase). Give each segment a natural ${native} translation that keeps the meaning and tone, not word for word.
 - Keep transmissions short, like real radio: usually one or two short sentences, about 6 to 18 words in total. A longer transmission (up to 3 sentences) only when someone reports something important.
-- delivery: how the line is performed when it matters (urgent, whispers, out of breath, shouts, relieved, worried, tired, excited, calm), or "" for a normal voice. Use it when the situation calls for it, not on every line.
+- delivery: how the line is performed when it matters (urgent, whispers, out of breath, shouts, relieved, worried, tired, excited, calm, hesitant), or "" for a normal voice. Use it when the situation calls for it, not on every line.
 - signal: radio quality of the transmission: ${story.signalGuide || '"strong" (close by, clear line), "fair" (some distance or interference), "weak" (far away, blocked, during bad moments)'}. A weak signal crackles and drops out, so keep weak lines short and clear.
+
+# Natural speech
+Real people on the radio rarely speak in perfect sentences when they are unsure, thinking, scared, out of breath or busy with their hands. In those moments, write the hesitation into the text:
+- fillers that ${target} speakers really use, a word that trails off with "…", a restart ("I… I think"), or a quick self-correction.
+- a silence inside the transmission: put [short pause], [pause] or [long pause] between words, where the speaker stops to check something, think, listen, or take in bad news. Example: "We have… [pause] two people here." These are the only tags allowed in text; never put them in translations.
+- Use this where it fits the moment, in about one transmission out of three or four, and mostly when the character is unsure or under stress. Calm, routine calls stay clean. Keep the words simple: a hesitation should make the line easier to follow, never harder.
+- Translations keep the same hesitation in ${native} ("Uh… I think so"), without the tags.
+- pause: the silence on the channel before this transmission. "quick" when the speaker answers at once (an alarm, an interruption, a fast urgent exchange); "long" when there is a noticeable wait first (the speaker is busy, thinking it over, reluctant, out of reach, or did not hear clearly); "" for a normal reply. Most lines use "".
 
 # Radio style
 - The characters cannot see each other. They describe what they see, hear and feel, and they react to each other.
@@ -143,9 +155,10 @@ function outputSchema(story: StoryBible) {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['speaker', 'delivery', 'signal', 'segments', 'log'],
+          required: ['speaker', 'pause', 'delivery', 'signal', 'segments', 'log'],
           properties: {
             speaker: { type: 'string', enum: story.parties.map((p) => p.id) },
+            pause: { type: 'string', enum: [...PAUSES] },
             delivery: { type: 'string', enum: [...DELIVERIES] },
             signal: { type: 'string', enum: [...SIGNALS] },
             segments: {
@@ -193,7 +206,7 @@ interface ModelLog {
 }
 
 interface ModelOutput {
-  lines: (Omit<DialogueLine, 'log' | 'delivery' | 'signal'> & { log?: ModelLog; delivery?: string; signal?: string })[]
+  lines: (Omit<DialogueLine, 'log' | 'delivery' | 'signal' | 'pause'> & { log?: ModelLog; delivery?: string; signal?: string; pause?: string })[]
   player: { target: string; native: string }
   facts: string[]
   summary: string
@@ -353,16 +366,27 @@ class ArrayItemScanner {
   }
 }
 
+const ANY_TAG = /\[[^\]]*\]/g
+const tidy = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+/** Splits written text into what is shown and what the voice performs (pause tags kept, other tags dropped). */
+function splitPauses(raw: string): { text: string; spoken?: string } {
+  const spoken = tidy(raw.replace(ANY_TAG, (tag) => (tag.slice(1, -1) in PAUSE_TAGS ? ` ${tag} ` : ' '))).replace(/^(\[[^\]]*\]\s*)+/, '')
+  const text = tidy(spoken.replace(ANY_TAG, ' '))
+  return { text: clip(text, 300), spoken: spoken !== text ? clip(spoken, 360) : undefined }
+}
+
 function normalizeLine(raw: ModelOutput['lines'][number], story: StoryBible): DialogueLine | null {
   if (!story.parties.some((p) => p.id === raw.speaker)) return null
   const segments = (raw.segments ?? [])
-    .filter((s) => s.text?.trim())
+    .map((s) => ({ ...splitPauses(s.text ?? ''), translation: clip(tidy((s.translation ?? '').replace(ANY_TAG, ' ')), 300) }))
+    .filter((s) => s.text)
     .slice(0, 4)
-    .map((s) => ({ text: clip(s.text.trim(), 300), translation: clip(s.translation?.trim(), 300) }))
   if (!segments.length) return null
   const delivery = DELIVERIES.includes(raw.delivery as Delivery) && raw.delivery ? raw.delivery : undefined
   return {
     speaker: raw.speaker,
+    pause: raw.pause === 'quick' || raw.pause === 'long' ? (raw.pause as LinePause) : undefined,
     delivery,
     signal: SIGNALS.includes(raw.signal as Signal) ? (raw.signal as Signal) : undefined,
     segments,

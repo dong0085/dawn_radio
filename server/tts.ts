@@ -5,7 +5,7 @@ import { json } from './http.ts'
  * Text-to-speech proxy. Keeps the ElevenLabs key on the server.
  *
  *   GET  /api/tts         -> { enabled: boolean }
- *   POST /api/tts         { text, voiceId, languageCode?, speed? }
+ *   POST /api/tts         { text, voiceId, languageCode?, speed?, delivery? }  (text may hold [pause] tags)
  *                         -> one JSON object: audio_base64 (mp3) + character alignment
  *   POST /api/tts/stream  same body
  *                         -> newline-delimited JSON chunks: audio_base64 (16-bit PCM) + alignment
@@ -47,9 +47,11 @@ export async function handleTts(request: Request, env: TtsEnv, { stream = false 
   if (text.length > MAX_CHARS) return json({ error: `text is longer than ${MAX_CHARS} characters` }, 400)
 
   const model = env.ELEVENLABS_MODEL_ID || 'eleven_v4'
-  // Expressive models (v3, v4) perform [tags]; older models would read them aloud.
-  const tag = body.delivery && /^[a-z ]{2,20}$/.test(body.delivery) && /eleven_v[34]/.test(model) ? `[${body.delivery}] ` : ''
-  const payload: Record<string, unknown> = { text: tag + text, model_id: model }
+  // Expressive models (v3, v4) perform [tags], such as a delivery or a [pause]; older models would read them aloud.
+  const expressive = /eleven_v[34]/.test(model)
+  const tag = body.delivery && /^[a-z ]{2,20}$/.test(body.delivery) && expressive ? `[${body.delivery}] ` : ''
+  const spoken = expressive ? text : text.replace(/\s*\[[^\]]*\]\s*/g, ' ').trim()
+  const payload: Record<string, unknown> = { text: tag + spoken, model_id: model }
   // Only some models accept a forced language.
   if (body.languageCode && /flash|turbo/.test(model)) payload.language_code = body.languageCode
   if (body.speed && body.speed !== 1) {

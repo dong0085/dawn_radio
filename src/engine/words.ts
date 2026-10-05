@@ -1,3 +1,4 @@
+import { PAUSE_TAGS } from '../../shared/api.ts'
 import type { Segment, TimedWord } from '../types'
 
 /** Character timing as returned by ElevenLabs `/with-timestamps`. */
@@ -8,6 +9,11 @@ export interface CharAlignment {
 }
 
 export const lineText = (segments: Segment[]) => segments.map((s) => s.text).join(' ')
+
+/** The line as the voice performs it, pause tags included. */
+export const spokenText = (segments: Segment[]) => segments.map((s) => s.spoken ?? s.text).join(' ')
+
+const PAUSE_TAG = /\[(short pause|pause|long pause)\]/g
 
 /** Lone punctuation like the French " ?" joins the word before it. */
 const isLonePunct = (t: string) => /^[?!:;»…]+$/.test(t)
@@ -24,6 +30,26 @@ export function tokenize(segments: Segment[]) {
   return out
 }
 
+/**
+ * Seconds of silence after each word (same order as tokenize), from the pause tags in the spoken text.
+ * All zeros when the spoken text doesn't line up with the shown text.
+ */
+export function pausesAfter(segments: Segment[]): number[] {
+  const tokens = tokenize(segments)
+  const pauses = tokens.map(() => 0)
+  let i = -1
+  for (const s of segments) {
+    // Each tag becomes its own "word" holding its length, e.g. "\u00010.6".
+    const parts = (s.spoken ?? s.text).replace(PAUSE_TAG, (_, tag: keyof typeof PAUSE_TAGS) => ` \u0001${PAUSE_TAGS[tag]} `)
+    for (const part of parts.split(/\s+/).filter(Boolean)) {
+      if (part.startsWith('\u0001')) {
+        if (i >= 0) pauses[i] += Number(part.slice(1))
+      } else if (!(i >= 0 && isLonePunct(part))) i++
+    }
+  }
+  return i === tokens.length - 1 ? pauses : tokens.map(() => 0)
+}
+
 export interface EstimateOptions {
   /** Speaking speed in characters per second. */
   charsPerSecond?: number
@@ -33,14 +59,15 @@ export interface EstimateOptions {
   commaPause?: number
 }
 
-/** Guess word timings from text length. Used when the voice gives no timing data. */
+/** Guess word timings from text length and pause tags. Used when the voice gives no timing data. */
 export function estimateWords(segments: Segment[], options: EstimateOptions = {}): TimedWord[] {
   const { charsPerSecond = 13, sentencePause = 0.3, commaPause = 0.12 } = options
+  const pauses = pausesAfter(segments)
   let t = 0
-  return tokenize(segments).map((w) => {
+  return tokenize(segments).map((w, i) => {
     const start = t
     const end = start + (w.text.length + 1) / charsPerSecond
-    t = end
+    t = end + pauses[i]
     if (/[.!?…]$/.test(w.text)) t += sentencePause
     else if (/[,;:]$/.test(w.text)) t += commaPause
     return { ...w, start, end }

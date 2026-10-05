@@ -104,7 +104,7 @@ Optional:
 | `CHANNEL_EFFORT` | `medium` | Effort for writing a new channel (once per channel, so quality over speed) |
 | `CHANNEL_SECRET` | from `ANTHROPIC_API_KEY` | Key that signs new channels; set it to sign independently of the API key |
 | `CLAUDE_THINKING` | on | `off` turns thinking off on Claude Sonnet 5.5, for the fastest first line |
-| `ELEVENLABS_MODEL_ID` | `eleven_v4` | `eleven_v4_turbo` is faster; `eleven_multilingual_v2` ignores delivery cues |
+| `ELEVENLABS_MODEL_ID` | `eleven_v4` | `eleven_v4_turbo` is faster; `eleven_multilingual_v2` ignores delivery cues and [pause] tags |
 | `ELEVENLABS_STT_MODEL` | `scribe_v1` | |
 
 **Reply speed.** The wait after you speak is mostly Claude writing its first line. Measured on the same request: Claude Opus 5.5 takes about 4–12 s to its first line (its thinking can't be turned off); Claude Sonnet 5.5 with `CLAUDE_THINKING=off` takes about 6 s. Voice adds about 0.7 s.
