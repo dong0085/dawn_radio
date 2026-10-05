@@ -1,5 +1,5 @@
-import type { Line, Scenario, ScenarioEnding } from '../../types'
-import type { Batch, BatchRequest, LineSource } from './types'
+import { NARRATOR_ID, type Line, type Scenario, type ScenarioEnding, type ScriptedPrelude } from '../../types'
+import type { Batch, BatchRequest, LineSource, NextOptions } from './types'
 
 type ScriptLine = Omit<Line, 'id'>
 
@@ -10,6 +10,8 @@ export interface ScriptedScenario {
   reactions: ScriptLine[][]
   ending: ScenarioEnding
   batchSize?: number
+  /** The narrator's opening, played before the first batch. */
+  prelude?: ScriptedPrelude
 }
 
 export interface ScriptedSourceOptions {
@@ -35,7 +37,10 @@ export class ScriptedSource implements LineSource {
     this.latency = options.latency ?? [700, 1600]
   }
 
-  async next(request: BatchRequest): Promise<Batch> {
+  async next(request: BatchRequest, { onScene }: NextOptions = {}): Promise<Batch> {
+    const prelude = request.prelude ? this.data.prelude : undefined
+    // The sound starts loading while the first lines are "written".
+    if (prelude?.scene) onScene?.(prelude.scene)
     const [min, max] = this.latency
     await new Promise((r) => setTimeout(r, min + Math.random() * (max - min)))
 
@@ -54,13 +59,15 @@ export class ScriptedSource implements LineSource {
     }
 
     const done = this.cursor >= this.data.script.length && this.pushedBack.length === 0
+    if (prelude) lines.unshift(...prelude.lines.map((l) => makeLine({ ...l, speaker: NARRATOR_ID })))
     return { lines, ending: done ? this.data.ending : undefined }
   }
 
   discard(lines: Line[]) {
     // Script lines are fixed, so unplayed ones come back next time.
     // Unplayed reactions are dropped; they only make sense right after the player speaks.
-    const keep = lines.filter((l) => !this.isReaction(l))
+    // The narration only opens the channel, so it never comes back either.
+    const keep = lines.filter((l) => l.speaker !== NARRATOR_ID && !this.isReaction(l))
     this.pushedBack = [...keep, ...this.pushedBack]
   }
 
@@ -72,7 +79,7 @@ export class ScriptedSource implements LineSource {
 
   snapshot(upcoming: Line[]) {
     // Lines handed out but never heard come back when the session resumes.
-    const unheard = this.pushedBack.length + upcoming.filter((l) => !this.isReaction(l)).length
+    const unheard = this.pushedBack.length + upcoming.filter((l) => l.speaker !== NARRATOR_ID && !this.isReaction(l)).length
     return { cursor: Math.max(0, this.cursor - unheard), reactionIndex: this.reactionIndex }
   }
 

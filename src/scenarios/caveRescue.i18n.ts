@@ -105,6 +105,20 @@ const zhHans: Record<string, string> = {
   'Stay on the channel.': '请留在频道上。',
   'Mission success': '任务成功',
   'The missing caver was found and brought out before the water rose.': '失踪的探险者被找到了，并在水位上涨前被带了出来。',
+  // The narrator's opening
+  'The Vercors mountains, late in the afternoon.': '韦科尔山区，傍晚时分。',
+  'The sky is grey. In the distance, the storm is coming.': '天空灰蒙蒙的。远处，暴风雨正在逼近。',
+  'Under the mountain lies the Grotte des Fées, the Fairies’ Cave.': '山下有一个洞穴，叫仙女洞。',
+  'A caver, Julien, went in this morning. He never came out.': '一名洞穴探险者朱利安今天早上进去了。他再也没有出来。',
+  'So listen closely. Tonight, every word may count.': '所以请仔细听。今晚，每一句话都可能很重要。',
+  'Stay with us until the end.': '请和我们一起坚持到最后。',
+  'In the cave is Léa, the team leader, with her partner Karim.': '洞里有队长莱娅，和她的搭档卡里姆。',
+  'She’s cold, she’s tired… but she never gives up.': '她又冷又累……但她从不放弃。',
+  'At the surface is Marc, at the control post.': '地面上是控制站的马克。',
+  'He has the map, the radio, and one eye on the rain.': '他手里有地图和对讲机，还一直留意着雨势。',
+  'And you? You know this cave well.': '那你呢？你很熟悉这个洞穴。',
+  'You’re on the same frequency. When you speak, they hear you.': '你在同一个频道上。你一开口，他们就能听到。',
+  'The rain is starting. The channel is open.': '雨开始下了。频道已经打开。',
 }
 
 const zhHant: Record<string, string> = {
@@ -212,6 +226,20 @@ const zhHant: Record<string, string> = {
   'Stay on the channel.': '請留在頻道上。',
   'Mission success': '任務成功',
   'The missing caver was found and brought out before the water rose.': '失蹤的探險者被找到了，並在水位上漲前被帶了出來。',
+  // The narrator's opening
+  'The Vercors mountains, late in the afternoon.': '韋科爾山區，傍晚時分。',
+  'The sky is grey. In the distance, the storm is coming.': '天空灰濛濛的。遠處，暴風雨正在逼近。',
+  'Under the mountain lies the Grotte des Fées, the Fairies’ Cave.': '山下有一個洞穴，叫仙女洞。',
+  'A caver, Julien, went in this morning. He never came out.': '一名洞穴探險者朱利安今天早上進去了。他再也沒有出來。',
+  'So listen closely. Tonight, every word may count.': '所以請仔細聽。今晚，每一句話都可能很重要。',
+  'Stay with us until the end.': '請和我們一起堅持到最後。',
+  'In the cave is Léa, the team leader, with her partner Karim.': '洞裡有隊長萊婭，和她的搭檔卡里姆。',
+  'She’s cold, she’s tired… but she never gives up.': '她又冷又累……但她從不放棄。',
+  'At the surface is Marc, at the control post.': '地面上是控制站的馬克。',
+  'He has the map, the radio, and one eye on the rain.': '他手裡有地圖和對講機，還一直留意著雨勢。',
+  'And you? You know this cave well.': '那你呢？你很熟悉這個洞穴。',
+  'You’re on the same frequency. When you speak, they hear you.': '你在同一個頻道上。你一開口，他們就能聽到。',
+  'The rain is starting. The channel is open.': '雨開始下了。頻道已經打開。',
 }
 
 export const caveRescueTranslations: Record<string, Record<string, string>> = {

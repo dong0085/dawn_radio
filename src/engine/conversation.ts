@@ -1,10 +1,11 @@
-import { PLAYER_ID, type Line, type LogState, type Scenario, type ScenarioEnding, type TimedWord, type TranscriptEntry } from '../types'
+import { NARRATOR_ID, PLAYER_ID, type Line, type LogState, type Party, type Scenario, type ScenarioEnding, type TimedWord, type TranscriptEntry } from '../types'
 import type { InputMode, Settings } from '../settings'
 import type { CarrierOptions, RadioAudio } from './radioAudio'
 import { applyLogUpdate, initialLog } from './log'
 import { ApiError } from '../api'
 import { recognitionSupported } from './recognizer'
 import { createBrowserTranscriber, createCloudTranscriber, type Transcriber } from './transcriber'
+import type { AmbienceSpec } from './ambience'
 import type { LineSource } from './sources/types'
 import type { Playback, PreparedSpeech, SpeechEngine, SpeechProvider } from './speech/types'
 import { sessionId, type SavedSession } from './session'
@@ -104,6 +105,12 @@ export interface GapRanges {
   quick: [number, number]
   /** The line is marked "long": the speaker hesitates, is busy, or takes a moment. */
   long: [number, number]
+  /** Before the narrator's first words, once the soundscape is playing. */
+  opening: [number, number]
+  /** Between the narrator's lines. */
+  narration: [number, number]
+  /** From the end of the narration to the first voice on the channel. */
+  curtain: [number, number]
 }
 
 export const DEFAULT_GAPS: GapRanges = {
@@ -111,6 +118,9 @@ export const DEFAULT_GAPS: GapRanges = {
   followUp: [900, 1800],
   quick: [200, 450],
   long: [2200, 3800],
+  opening: [1800, 2400],
+  narration: [500, 900],
+  curtain: [2600, 3200],
 }
 
 interface QueueItem {
@@ -165,6 +175,13 @@ export class Conversation {
   private replayQueue: QueueItem[] = []
   /** When the channel last went quiet (a line or the player's transmission ended), from performance.now(). */
   private quietSince = 0
+  /** The soundscape under the opening narration is playing. */
+  private bed = false
+  /** Settles once the soundscape plays (or takes too long); the narrator waits for it. */
+  private sceneReady: Promise<unknown> | null = null
+  private sceneSettled = true
+  /** The listener skipped the narration, so lines of it that are still arriving are dropped. */
+  private preludeSkipped = false
   /** When the player's current transmission started (performance.now()), and the silence before it (s). */
   private txStartedAt = 0
   private txGap = 0
@@ -238,8 +255,9 @@ export class Conversation {
     clearTimeout(this.gapTimer)
     if (this.playback) {
       this.playback.pause()
-      this.opts.audio.carrierOff()
+      this.channelOff()
     }
+    if (this.bed) this.opts.audio.bedLevel('off')
     this.set({ paused: true, onAir: this.state.activity === 'transmitting' ? PLAYER_ID : null })
   }
 
@@ -247,8 +265,9 @@ export class Conversation {
     if (!this.state.paused) return
     this.opts.audio.ensure()
     this.set({ paused: false })
+    if (this.bed) this.opts.audio.bedLevel(this.playingItem?.line.speaker === NARRATOR_ID ? 'under' : 'full')
     if (this.playback && this.playingItem) {
-      this.opts.audio.carrierOn(this.carrierFor(this.playingItem.line))
+      this.channelOn(this.playingItem.line)
       this.playback.resume()
       this.set({ onAir: this.playingItem.line.speaker })
     } else {
@@ -279,7 +298,7 @@ export class Conversation {
     if (!items.length) return
     this.opts.audio.ensure()
     clearTimeout(this.gapTimer)
-    if (this.playback) this.opts.audio.carrierOff()
+    if (this.playback) this.channelOff()
     // A live line cut short here plays in full at the end of the replay, since it is already in the transcript.
     this.stopPlayback()
     this.replayQueue = items
@@ -296,12 +315,27 @@ export class Conversation {
     if (!this.state.replaying) return
     this.replayQueue = []
     if (this.state.current?.replay) {
-      if (this.playback) this.opts.audio.carrierOff()
+      if (this.playback) this.channelOff()
       this.stopPlayback()
       this.quietSince = performance.now()
     }
     this.endReplay()
     this.set({ activity: 'idle', onAir: null })
+    this.advance()
+  }
+
+  /** Skips the rest of the opening narration and goes straight to the channel. */
+  skipPrelude() {
+    if (this.state.phase !== 'running' || this.state.replaying) return
+    this.preludeSkipped = true
+    this.queue = this.queue.filter((q) => q.line.speaker !== NARRATOR_ID)
+    if (this.playingItem?.line.speaker === NARRATOR_ID) {
+      this.stopPlayback()
+      this.quietSince = performance.now()
+      this.set({ onAir: null, current: null, activity: 'idle' })
+    }
+    this.closeBed(1.2)
+    this.set({ paused: false })
     this.advance()
   }
 
@@ -434,6 +468,10 @@ export class Conversation {
     this.played.clear()
     this.replayQueue = []
     this.opts.audio.carrierOff()
+    this.closeBed(0.6)
+    this.sceneReady = null
+    this.sceneSettled = true
+    this.preludeSkipped = false
     this.opts.source.reset?.()
     this.state = initialState(this.pickEngine(), initialLog(this.opts.scenario.log?.initial))
     this.start()
@@ -454,6 +492,7 @@ export class Conversation {
   dispose() {
     this.epoch++
     this.stopPlayback()
+    this.closeBed(0.3)
     this.recognizer?.abort()
     this.releaseMic()
     clearTimeout(this.gapTimer)
@@ -499,6 +538,16 @@ export class Conversation {
       this.prepare(item).then(() => epoch === this.epoch && this.advance())
       return
     }
+    const narration = item.line.speaker === NARRATOR_ID
+    // The narrator lets the soundscape set in before the first words.
+    if (narration && !this.sceneSettled && this.sceneReady) {
+      this.set({ activity: 'waiting' })
+      const epoch = this.epoch
+      this.sceneReady.then(() => epoch === this.epoch && this.advance())
+      return
+    }
+    // The narration is over: the soundscape fades while the channel opens.
+    if (!narration) this.closeBed()
     // Let the channel stay quiet for a moment, like people taking turns.
     item.gap ??= this.pickGap(item.line)
     const wait = this.quietSince + item.gap - performance.now()
@@ -531,12 +580,14 @@ export class Conversation {
       this.gapTimer = setTimeout(() => this.advance(), wait)
       return
     }
+    if (item.line.speaker !== NARRATOR_ID) this.closeBed()
     this.replayQueue.shift()
     this.play(item, true)
     if (this.replayQueue[0]) void this.prepare(this.replayQueue[0])
   }
 
   private endReplay() {
+    this.closeBed()
     // After the closing, the screen goes back to the ending.
     this.set({ replaying: false, ...(this.state.phase === 'ended' && { current: null }) })
   }
@@ -570,6 +621,7 @@ export class Conversation {
     const queued = new Set<string>()
     const enqueue = (line: Line) => {
       if (epoch !== this.epoch || queued.has(line.id)) return
+      if (line.speaker === NARRATOR_ID && this.preludeSkipped) return
       queued.add(line.id)
       this.queue.push(this.makeItem(line))
     }
@@ -580,9 +632,12 @@ export class Conversation {
           upcoming: this.queue.map((q) => q.line),
           playerMessage,
           log: this.state.log,
+          prelude:
+            !!this.opts.scenario.narrator && this.settings.prelude && !this.preludeSkipped && !playerMessage && !this.state.transcript.length,
         },
         {
           signal: abort.signal,
+          onScene: (scene) => epoch === this.epoch && this.openScene(scene),
           onPlayer: (player) => {
             if (epoch === this.epoch && playerId) this.applyPlayerRendering(player, playerId, 'writers')
           },
@@ -624,7 +679,18 @@ export class Conversation {
   /** Silence before a line: set by the writers, or by whether the speaker changes. */
   private pickGap(line: Line) {
     const previous = this.state.transcript[this.state.transcript.length - 1]?.speaker
-    const [min, max] = line.pause ? this.gaps[line.pause] : line.speaker === previous ? this.gaps.followUp : this.gaps.reply
+    const narration = line.speaker === NARRATOR_ID
+    const [min, max] = narration
+      ? previous === NARRATOR_ID
+        ? this.gaps.narration
+        : this.gaps.opening
+      : previous === NARRATOR_ID
+        ? this.gaps.curtain
+        : line.pause
+          ? this.gaps[line.pause]
+          : line.speaker === previous
+            ? this.gaps.followUp
+            : this.gaps.reply
     return min + Math.random() * (max - min)
   }
 
@@ -635,7 +701,7 @@ export class Conversation {
   /** Starts preparing a line's audio (once) and resolves when it can start playing. */
   private prepare(item: QueueItem): Promise<PreparedSpeech> {
     if (item.prepared) return item.prepared
-    const party = this.opts.scenario.parties.find((p) => p.id === item.line.speaker)
+    const party = this.voiceOf(item.line.speaker)
     const lang = this.opts.scenario.targetLang
     const { browser, elevenlabs, archive } = this.opts.voices
     const engine = this.pickEngine()
@@ -663,6 +729,54 @@ export class Conversation {
   private carrierFor(line: Line): CarrierOptions {
     const radio = this.opts.scenario.parties.find((p) => p.id === line.speaker)?.radio
     return { ambience: radio?.ambience, signal: line.signal ?? radio?.signal ?? 1 }
+  }
+
+  /** Who speaks a line: a party, or the narrator dressed as one for the voices. */
+  private voiceOf(speaker: string): Party | undefined {
+    const narrator = this.opts.scenario.narrator
+    if (speaker === NARRATOR_ID && narrator) return { id: NARRATOR_ID, name: narrator.name ?? NARRATOR_ID, side: 'left', color: narrator.color, voice: narrator.voice }
+    return this.opts.scenario.parties.find((p) => p.id === speaker)
+  }
+
+  /** Opens the channel for a line: the radio's squelch for a party; for the narrator, the soundscape follows the cue. */
+  private channelOn(line: Line) {
+    if (line.speaker !== NARRATOR_ID) return this.opts.audio.carrierOn(this.carrierFor(line))
+    if (!this.bed) return
+    const audio = this.opts.audio
+    audio.bedLevel('under')
+    // Introducing one side brings up the sound at their end, clean, as if the listener stood there.
+    const ambience = this.opts.scenario.parties.find((p) => p.id === line.cue)?.radio?.ambience
+    void audio.setBed('cue', ambience && ambience.kind !== 'none' ? ambience : null, 0.55, 1.2)
+  }
+
+  /** Closes the channel after the line that is playing. */
+  private channelOff(line = this.playingItem?.line) {
+    if (line?.speaker !== NARRATOR_ID) return this.opts.audio.carrierOff()
+    if (this.bed) this.opts.audio.bedLevel('full')
+  }
+
+  /** The opening soundscape starts; the narrator waits for it, a few seconds at most. */
+  private openScene(scene: AmbienceSpec) {
+    if (this.preludeSkipped) return
+    const gain = this.opts.scenario.narrator?.bedGain ?? 0.5
+    this.bed = true
+    this.sceneSettled = false
+    const playing = this.opts.audio.setBed('scene', scene, gain, 2.5)
+    const ready = Promise.race([playing, new Promise((r) => setTimeout(r, 6000))]).then(() => {
+      if (this.sceneReady !== ready) return
+      this.sceneSettled = true
+      // The pause before the first words counts from here.
+      if (!this.state.transcript.length) this.quietSince = performance.now()
+    })
+    this.sceneReady = ready
+  }
+
+  /** Fades the soundscape out. */
+  private closeBed(fade = 2.5) {
+    this.sceneSettled = true
+    if (!this.bed) return
+    this.bed = false
+    this.opts.audio.bedOff(fade)
   }
 
   /** Prepares only the next few lines, so cut-off lines rarely cost a voice request. */
@@ -696,7 +810,7 @@ export class Conversation {
       // A tape makes the log changes again as it plays.
       this.set({ log: applyLogUpdate(this.state.log, item.line.log, { at: this.elapsed(), lineId: item.line.id }) })
     }
-    this.opts.audio.carrierOn(this.carrierFor(item.line))
+    this.channelOn(item.line)
     this.set({
       activity: 'speaking',
       onAir: item.line.speaker,
@@ -709,7 +823,7 @@ export class Conversation {
       this.playback = null
       this.playingItem = null
       cancelAnimationFrame(this.raf)
-      this.opts.audio.carrierOff()
+      this.channelOff(item.line)
       const current = this.state.current && { ...this.state.current, wordIndex: speech.words.length }
       this.set({ onAir: null, current, activity: reason === 'ended' ? 'idle' : this.state.activity })
       if (reason !== 'ended') return
@@ -753,9 +867,10 @@ export class Conversation {
         transcript: this.state.transcript.map((e) => (e.id === id ? { ...e, interrupted: true, cutAt } : e)),
       })
     }
-    if (this.playback) this.opts.audio.carrierOff()
+    if (this.playback) this.channelOff()
     this.stopPlayback()
     this.replayQueue = []
+    this.closeBed(0.6)
     if (this.state.replaying) this.set({ replaying: false })
     this.opts.source.discard?.(this.queue.map((q) => q.line))
     this.queue = []
@@ -764,6 +879,7 @@ export class Conversation {
   }
 
   private finish(ending: ScenarioEnding) {
+    this.closeBed()
     this.set({ phase: 'ended', activity: 'idle', onAir: null, ending })
   }
 

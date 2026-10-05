@@ -38,6 +38,10 @@ export interface UiText {
   settings: string
   channelClosed: string
   tuningIn: string
+  /** Name shown with the voice that opens a channel. */
+  narrator: string
+  /** Key that skips the opening narration. */
+  skipPrelude: string
   /** Eyebrow on the resume screen. */
   logged: (transmissions: number) => string
   transmitting: (name: string) => string
@@ -93,6 +97,8 @@ export const en: UiText = {
   settings: 'Settings',
   channelClosed: 'Channel closed',
   tuningIn: 'Tuning in…',
+  narrator: 'Narrator',
+  skipPrelude: 'Skip',
   logged: (n) => `${n} transmission${n === 1 ? '' : 's'} logged`,
   transmitting: (name) => `${name} · Transmitting`,
   awaitingReply: (name) => `${name} · Awaiting reply`,
@@ -100,7 +106,7 @@ export const en: UiText = {
   pause: 'Pause',
   play: 'Resume',
   repeat: 'Repeat',
-  live: { live: 'Live', loading: '', paused: 'Paused', tx: 'TX', standby: 'Standby', off: 'Off air', replay: 'Replay' },
+  live: { live: 'Live', loading: '', paused: 'Paused', tx: 'TX', standby: 'Standby', off: 'Off air', replay: 'Replay', prelude: 'Prologue' },
   notices: {
     garbled: 'Transmission garbled',
     nothingReceived: 'No transmission received',
@@ -158,6 +164,7 @@ export const en: UiText = {
     training: 'Field training',
     trainingAction: 'Start',
     restart: 'Rejoin channel',
+    prelude: 'Opening',
     close: 'Close',
   },
   channelsPanel: {

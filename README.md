@@ -8,6 +8,7 @@
 
 ## What it does
 
+- **An opening like a radio play.** Before the channel opens, a narrator speaks off the radio, in the channel's language. They paint the scene, invite you to listen closely, and introduce each side, whose light comes on like a spotlight while their background sound comes up. Then they hand over to the channel. Claude writes the opening with the first lines, plus a soundscape that ElevenLabs makes to play under it. Skip it with the Skip key, or turn it off under Settings → Opening.
 - **A story written live.** Claude writes the next 4 radio lines at a time. Each line streams to the browser the moment it's written, so the first voice starts before the rest are done.
 - **You're on the channel.** Hold the talk key and speak (in French, English, or a mix). The characters answer you, take your ideas seriously, and quietly repeat your message back in correct French, the way radio operators confirm a call.
 - **Subtitles that follow the voice.** Every line shows French and English, and each word lights up as it's spoken, timed from ElevenLabs' character alignment.
@@ -110,7 +111,7 @@ Optional:
 
 **Reply speed.** The wait after you speak is mostly Claude writing its first line. Measured on the same request: Claude Opus 5.5 takes about 4–12 s to its first line (its thinking can't be turned off); Claude Sonnet 5.5 with `CLAUDE_THINKING=off` takes about 6 s. Voice adds about 0.7 s.
 
-**Ambience files.** The cave, room and rain sounds are generated in the browser. To use recorded ones instead, run `node --env-file=.env scripts/make-sfx.mjs` once (needs the *sound generation* permission on the ElevenLabs key); it writes `public/sfx/*.mp3`, which the app picks up automatically.
+**Ambience files.** The cave, room and rain sounds are generated in the browser. To use recorded ones instead, run `node --env-file=.env scripts/make-sfx.mjs` once (needs the *sound generation* permission on the ElevenLabs key); it writes `public/sfx/*.mp3`, which the app picks up automatically. The same permission lets the server make the soundscape under each channel's opening (`/api/sfx`); without it, the opening plays without one.
 
 **Spending.** Each visitor is limited per minute on every API route (`server/rateLimit.ts`). For a public URL, also set a monthly spend limit in the Anthropic, ElevenLabs and DeepL dashboards; those are the only hard caps.
 

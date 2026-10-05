@@ -104,7 +104,7 @@ export class StreamedClip {
  * Plays a clip through the radio, starting before it has fully arrived.
  * `speed` is read at each start and resume; positions stay in seconds of the original clip.
  */
-export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => number = () => 1): Playback {
+export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => number = () => 1, to: AudioNode = audio.input): Playback {
   const ctx = audio.context
   const rate = clip.sampleRate
   let stretch = new TimeStretch(1, rate)
@@ -151,7 +151,7 @@ export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => n
     buffer.copyToChannel(data as Float32Array<ArrayBuffer>, 0)
     const src = ctx.createBufferSource()
     src.buffer = buffer
-    src.connect(audio.input)
+    src.connect(to)
     src.start(nextTime)
     sources.push(src)
     nextTime += buffer.duration

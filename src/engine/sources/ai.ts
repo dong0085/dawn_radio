@@ -1,6 +1,6 @@
 import type { DialogueRequest, HistoryLine, LogSnapshot, StoryMemory } from '../../../shared/api.ts'
 import { streamDialogue } from '../../api'
-import { PLAYER_ID, type Line, type LogState, type TranscriptEntry } from '../../types'
+import { NARRATOR_ID, PLAYER_ID, type Line, type LogState, type TranscriptEntry } from '../../types'
 import type { Batch, BatchRequest, LineSource, NextOptions } from './types'
 
 export interface AiSourceOptions {
@@ -23,7 +23,8 @@ const emptyMemory = (): StoryMemory => ({ summary: '', facts: [] })
 const SIGNAL = { strong: 1, fair: 0.65, weak: 0.3 } as const
 
 function toHistory(entries: TranscriptEntry[]): HistoryLine[] {
-  return entries.map((e) => ({
+  // The narration is told to the listener, not said on the channel.
+  return entries.filter((e) => e.speaker !== NARRATOR_ID).map((e) => ({
     speaker: e.speaker === PLAYER_ID ? 'player' : e.speaker,
     text: e.segments.map((s) => s.text).join(' '),
     interrupted: e.interrupted,
@@ -54,7 +55,7 @@ export class AiSource implements LineSource {
     this.opts = { recentLines: 24, ...options }
   }
 
-  async next(request: BatchRequest, { onLine, onPlayer, signal }: NextOptions = {}): Promise<Batch> {
+  async next(request: BatchRequest, { onLine, onPlayer, onScene, signal }: NextOptions = {}): Promise<Batch> {
     const lines: Line[] = []
     const res = await streamDialogue(
       {
@@ -65,16 +66,19 @@ export class AiSource implements LineSource {
         // Queued lines will air first, so the writers continue after them.
         history: [
           ...toHistory(request.history),
-          ...(request.upcoming ?? []).map((l) => ({ speaker: l.speaker, text: l.segments.map((x) => x.text).join(' ') })),
+          ...(request.upcoming ?? []).filter((l) => l.speaker !== NARRATOR_ID).map((l) => ({ speaker: l.speaker, text: l.segments.map((x) => x.text).join(' ') })),
         ].slice(-this.opts.recentLines),
         playerMessage: request.playerMessage,
         log: toSnapshot(request.log),
         targetLang: this.opts.targetLang,
         nativeLang: this.opts.nativeLang,
+        prelude: request.prelude,
       },
       {
         signal,
         onPlayer,
+        // The opening soundscape loops under the narration, outside the radio.
+        onScene: (src) => onScene?.({ kind: 'none', src }),
         onLine: (l) => {
           const line: Line = { ...l, id: `ai${++counter}`, signal: l.signal ? SIGNAL[l.signal] : undefined }
           lines.push(line)
@@ -83,7 +87,9 @@ export class AiSource implements LineSource {
       },
     )
 
-    this.previous = { memory: this.memory, batchIndex: this.batchIndex, ids: new Set(lines.map((l) => l.id)) }
+    // The narration is not part of the story memory, so only the radio lines count toward a rollback.
+    const ids = new Set(lines.filter((l) => l.speaker !== NARRATOR_ID).map((l) => l.id))
+    this.previous = { memory: this.memory, batchIndex: this.batchIndex, ids }
     this.memory = res.memory
     this.batchIndex++
     return { lines, ending: res.ending, player: res.player }

@@ -1,3 +1,4 @@
+import type { AmbienceSpec } from '../ambience'
 import type { Line, LogState, ScenarioEnding, TranscriptEntry } from '../../types'
 
 export interface BatchRequest {
@@ -9,6 +10,8 @@ export interface BatchRequest {
   playerMessage?: string
   /** The field log as it stands. */
   log?: LogState
+  /** Open with the narrator's scene before the first lines (only when nothing has aired yet). */
+  prelude?: boolean
 }
 
 export interface Batch {
@@ -25,6 +28,8 @@ export interface NextOptions {
   onLine?: (line: Line) => void
   /** Called with the writers' version of the player's message, before the lines that answer it. */
   onPlayer?: (player: { target: string; native: string }) => void
+  /** Called with the soundscape for the opening narration, before its first line. */
+  onScene?: (scene: AmbienceSpec) => void
   /** Aborted when the player cuts in and the batch is no longer wanted. */
   signal?: AbortSignal
 }

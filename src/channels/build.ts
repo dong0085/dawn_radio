@@ -12,6 +12,12 @@ export const frequencyFor = (n: number) => `${(446.1 + n * 0.025).toFixed(3)} MH
 /** The player's own light color on every made channel. */
 export const PLAYER_COLOR = '#3dff9a'
 
+/** The narrator's subtitle color on every made channel. */
+export const NARRATOR_COLOR = '#f2e6c9'
+
+/** Voices the narrator takes, best first; the first one neither side uses. */
+const NARRATOR_VOICES = ['nPczCjzI2devNBz1zQrb', 'onwK4e9ZLuTAKqWW03F9', 'XB0fDUnXU5powFXDhCwa', 'XrExE9yKIg1WjnnlVkGX']
+
 /** Next free number after the preset and every stored channel. */
 export const nextChannelNumber = (taken: number[]) => Math.max(...taken) + 1
 
@@ -56,6 +62,9 @@ export function channelData(ch: StoredChannel, words: ChannelWords = { player: '
     }
   }) as [Party, Party]
 
+  const narratorVoice = NARRATOR_VOICES.find((id) => !display.parties.some((p) => p.voiceId === id)) ?? NARRATOR_VOICES[0]
+  const narratorGender = VOICE_POOL.find((v) => v.id === narratorVoice)?.gender
+
   const scenario: Scenario = {
     id: ch.id,
     incident: words.incident(String(ch.number).padStart(2, '0')),
@@ -67,6 +76,10 @@ export function channelData(ch: StoredChannel, words: ChannelWords = { player: '
     premise: display.premise,
     parties,
     player: { name: words.player, color: PLAYER_COLOR },
+    narrator: {
+      color: NARRATOR_COLOR,
+      voice: { elevenLabsVoiceId: narratorVoice, browserPitch: narratorGender === 'female' ? 1.05 : 0.95 },
+    },
     log: {
       title: display.log.title,
       sections: display.log.sections,

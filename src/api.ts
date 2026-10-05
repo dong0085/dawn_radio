@@ -56,8 +56,15 @@ export async function streamDialogue(
   {
     onLine,
     onPlayer,
+    onScene,
     signal,
-  }: { onLine: (line: DialogueLine) => void; onPlayer?: (player: { target: string; native: string }) => void; signal?: AbortSignal },
+  }: {
+    onLine: (line: DialogueLine) => void
+    onPlayer?: (player: { target: string; native: string }) => void
+    /** The address of the soundscape under the opening narration. */
+    onScene?: (sound: string) => void
+    signal?: AbortSignal
+  },
 ): Promise<DialogueDone> {
   const res = await apiFetch('/dialogue', {
     method: 'POST',
@@ -69,6 +76,7 @@ export async function streamDialogue(
   await readNdjson<DialogueEvent>(res, (event) => {
     if (event.type === 'line') onLine(event.line)
     else if (event.type === 'player') onPlayer?.(event.player)
+    else if (event.type === 'scene') onScene?.(event.sound)
     else if (event.type === 'done') done = event
     else throw new ApiError(event.status, event.error)
   })

@@ -10,14 +10,16 @@ import {
   type LinePause,
   type LogSnapshot,
   type LogTone,
+  NARRATOR,
   PAUSE_TAGS,
 } from '../shared/api.ts'
 import { CHANNEL_LANGUAGES, NATIVE_LANGUAGES, languageName } from '../shared/channels.ts'
 import { stories, type StoryBible } from '../shared/stories.ts'
 import { verifyChannel, type ChannelEnv } from './channel.ts'
 import { json } from './http.ts'
+import { sceneUrl, SFX_PROMPT_CHARS, type SfxEnv } from './sfx.ts'
 
-export interface DialogueEnv extends ChannelEnv {
+export interface DialogueEnv extends ChannelEnv, SfxEnv {
   ANTHROPIC_API_KEY?: string
   /** Defaults to claude-opus-5-5. */
   CLAUDE_MODEL?: string
@@ -31,6 +33,11 @@ const LINES_PER_BATCH = 4
 /** Delivery cues the voice model performs (sent to ElevenLabs as [tags], hidden from subtitles). */
 const DELIVERIES = ['', 'calm', 'urgent', 'whispers', 'out of breath', 'shouts', 'relieved', 'worried', 'tired', 'excited', 'hesitant'] as const
 type Delivery = (typeof DELIVERIES)[number]
+/** How the narrator performs the opening. */
+const NARRATOR_DELIVERIES = ['', 'warm', 'mysterious', 'dramatic', 'hushed', 'excited', 'solemn', 'calm'] as const
+type NarratorDelivery = (typeof NARRATOR_DELIVERIES)[number]
+/** Most items in the opening narration. */
+const PRELUDE_MAX = 8
 /** Radio signal quality of a transmission. */
 const SIGNALS = ['strong', 'fair', 'weak'] as const
 type Signal = (typeof SIGNALS)[number]
@@ -112,7 +119,8 @@ Possible events (any order, adapt freely): ${story.beats.map((x) => `\n- ${x}`).
 Possible endings: ${story.endings.map((e) => `\n- ${e.outcome}: ${e.when}`).join('')}`
 }
 
-function outputSchema(story: StoryBible) {
+/** With prelude, the reply opens with the soundscape and the narration, so both stream before the dialogue. */
+function outputSchema(story: StoryBible, prelude = false) {
   const str = { type: 'string' }
   const bilingual = {
     type: 'object',
@@ -154,7 +162,7 @@ function outputSchema(story: StoryBible) {
     type: 'object',
     additionalProperties: false,
     // player comes first, so the lines can confirm it in the same words.
-    required: ['player', 'lines', 'facts', 'summary', 'status', 'ending'],
+    required: ['player', ...(prelude ? ['scene_sound', 'prelude'] : []), 'lines', 'facts', 'summary', 'status', 'ending'],
     properties: {
       player: {
         type: 'object',
@@ -162,6 +170,22 @@ function outputSchema(story: StoryBible) {
         required: ['target', 'native'],
         properties: { target: str, native: str },
       },
+      ...(prelude && {
+        scene_sound: str,
+        prelude: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['cue', 'delivery', 'segments'],
+            properties: {
+              cue: { type: 'string', enum: ['scene', ...story.parties.map((p) => p.id), 'player'] },
+              delivery: { type: 'string', enum: [...NARRATOR_DELIVERIES] },
+              segments: { type: 'array', items: bilingual },
+            },
+          },
+        },
+      }),
       lines: {
         type: 'array',
         items: {
@@ -278,9 +302,33 @@ function renderHistory(story: StoryBible, history: HistoryLine[]) {
     .join('\n')
 }
 
+/** Instructions for the narrator who opens the channel. */
+function preludePrompt(story: StoryBible) {
+  const target = languageName(story.targetLang)
+  const native = languageName(story.nativeLang)
+  const [a, b] = story.parties
+  return `# Opening narration
+Before the channel opens, a narrator speaks to the listener, like the voice that opens a radio play, or welcomes an audience before the curtain rises on a stage. The narrator is not one of the characters and is not on the radio. Write the narration in prelude, before the lines.
+- Language: ${target} at CEFR ${story.level}, a little simpler than the dialogue: short sentences, vivid but common words. Give every segment a natural ${native} translation (no tags in translations).
+- 5 to 7 items, each at most three short sentences (about 30 words). Use [pause] or [long pause] between words for effect, a few times in all.
+- In this order:
+  1. cue "scene" (one or two items): paint the place and the moment so the listener sees, hears and feels it: the time, the weather, the light, one or two sounds, and what is at stake.
+  2. cue "scene": invite the listener in. Make them feel that this story matters and that every word on the channel will count, and ask them to listen closely. Say it in your own words, the way a storyteller draws an audience in.
+  3. cue "${a.id}": introduce ${a.name} (radio call sign "${a.callSign}"): who they are, where they are right now, and one detail that makes them human.
+  4. cue "${b.id}": introduce ${b.name} (radio call sign "${b.callSign}") the same way.
+  5. cue "player": the listener's own part, in the second person: they are ${story.playerRole} They are on the same frequency, and when they speak up, the others will hear them.
+  6. cue "scene": close the opening the way an announcer does before the curtain rises: one short line that hands over to the channel.
+- delivery: how the narrator performs the item: warm, mysterious, dramatic, hushed, excited, solemn, calm, or "" for a plain storytelling voice. Vary it with the moment.
+- Expressive and inviting, never over the top. Speak to the listener as "you".
+- Stay inside the story: never mention a game, an app, learning, buttons, or the narrator.
+- The narration is true for the story, and the dialogue starts right after it. The characters don't repeat what the narrator said.
+scene_sound: an English prompt for a sound effects generator, 10 to 30 words, for the background soundscape where the story begins (weather, nature, machines, distance, room tone). No voices, no music.`
+}
+
 function userPrompt(story: StoryBible, req: DialogueRequest) {
   const parts: string[] = []
   parts.push(`Batch ${req.batchIndex + 1} (the story should end around batch ${story.targetBatches}).`)
+  if (req.prelude) parts.push(preludePrompt(story))
   if (req.batchIndex === 0 && req.history.length === 0) {
     parts.push('This is the opening. Start mid-operation with a radio check, and set up the situation quickly.')
     if (!req.log?.entries.length) parts.push('The field log is empty: set the objective and add the starting entries (both parties among them) in the opening transmissions.')
@@ -327,6 +375,8 @@ async function readRequest(body: unknown, env: DialogueEnv): Promise<{ req: Dial
     playerMessage: clip(b.playerMessage, LIMITS.playerChars).trim() || undefined,
     log: readLog(b.log),
   }
+  // The narrator only opens a channel that has not started yet.
+  req.prelude = b.prelude === true && req.batchIndex === 0 && !req.history.length && !req.playerMessage
   return { req, story, notesLang: signed.targetLang }
 }
 
@@ -407,10 +457,7 @@ function readPlayer(head: string): ModelOutput['player'] | undefined {
 
 function normalizeLine(raw: ModelOutput['lines'][number], story: StoryBible): DialogueLine | null {
   if (!story.parties.some((p) => p.id === raw.speaker)) return null
-  const segments = (raw.segments ?? [])
-    .map((s) => ({ ...splitPauses(s.text ?? ''), translation: clip(tidy((s.translation ?? '').replace(ANY_TAG, ' ')), 300) }))
-    .filter((s) => s.text)
-    .slice(0, 4)
+  const segments = normalizeSegments(raw.segments)
   if (!segments.length) return null
   const delivery = DELIVERIES.includes(raw.delivery as Delivery) && raw.delivery ? raw.delivery : undefined
   return {
@@ -423,9 +470,46 @@ function normalizeLine(raw: ModelOutput['lines'][number], story: StoryBible): Di
   }
 }
 
+interface ModelNarration {
+  cue?: string
+  delivery?: string
+  segments?: Bi[]
+}
+
+function normalizeSegments(raw: Bi[] | undefined) {
+  return (raw ?? [])
+    .map((s) => ({ ...splitPauses(s.text ?? ''), translation: clip(tidy((s.translation ?? '').replace(ANY_TAG, ' ')), 300) }))
+    .filter((s) => s.text)
+    .slice(0, 4)
+}
+
+function normalizeNarration(raw: ModelNarration, story: StoryBible): DialogueLine | null {
+  const segments = normalizeSegments(raw.segments)
+  if (!segments.length) return null
+  const cues = ['scene', 'player', ...story.parties.map((p) => p.id)]
+  return {
+    speaker: NARRATOR,
+    cue: cues.includes(raw.cue ?? '') ? raw.cue : 'scene',
+    delivery: NARRATOR_DELIVERIES.includes(raw.delivery as NarratorDelivery) && raw.delivery ? raw.delivery : undefined,
+    segments,
+  }
+}
+
+/** The soundscape prompt, once the writers have finished it. */
+function readSceneSound(text: string) {
+  const m = /"scene_sound"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text)
+  if (!m) return null
+  try {
+    return (JSON.parse(`"${m[1]}"`) as string).slice(0, SFX_PROMPT_CHARS)
+  } catch {
+    return ''
+  }
+}
+
 /**
  * POST /api/dialogue -> newline-delimited JSON events:
- *   {"type":"line","line":{...}}   as soon as each line is written
+ *   {"type":"scene","sound":"/api/sfx?..."}   opening only: the soundscape under the narration
+ *   {"type":"line","line":{...}}   as soon as each line is written (opening: the narration first)
  *   {"type":"done","memory":{...},"player":{...},"ending":{...}}
  *   {"type":"error","error":"...","status":502}
  */
@@ -474,7 +558,7 @@ export async function handleDialogue(request: Request, env: DialogueEnv): Promis
           ...(thinkingOff ? { thinking: { type: 'between_tools' as const } } : {}),
           output_config: {
             ...(hasEffort ? { effort } : {}),
-            format: { type: 'json_schema', schema: outputSchema(story) },
+            format: { type: 'json_schema', schema: outputSchema(story, dialogue.prelude) },
           },
           system: systemPrompt(story, notesLang),
           messages: [{ role: 'user', content: userPrompt(story, dialogue) }],
@@ -484,9 +568,35 @@ export async function handleDialogue(request: Request, env: DialogueEnv): Promis
 
       const scanner = new ArrayItemScanner('lines')
       let playerSent = !dialogue.playerMessage
+      const narration = dialogue.prelude ? new ArrayItemScanner('prelude') : null
+      let sceneSent = !dialogue.prelude
+      let narrated = 0
       for await (const event of stream) {
         if (event.type !== 'content_block_delta' || event.delta.type !== 'text_delta') continue
         const items = scanner.push(event.delta.text)
+        if (narration) {
+          const told = narration.push(event.delta.text)
+          // The sound takes a few seconds to make, so it goes out as soon as its prompt is written.
+          if (!sceneSent) {
+            const prompt = readSceneSound(narration.text)
+            if (prompt !== null) {
+              sceneSent = true
+              const sound = prompt && (await sceneUrl(env, prompt))
+              if (sound) await send({ type: 'scene', sound })
+            }
+          }
+          for (const raw of told) {
+            try {
+              const line = narrated < PRELUDE_MAX ? normalizeNarration(JSON.parse(raw), story) : null
+              if (!line) continue
+              if (!narrated && !sent) firstLineAt = Date.now() - started
+              narrated++
+              await send({ type: 'line', line })
+            } catch {
+              /* skip a malformed item */
+            }
+          }
+        }
         // The player's message is written before the lines; send it at once so the transcript matches the reply.
         if (!playerSent && scanner.head !== null) {
           playerSent = true
@@ -497,7 +607,7 @@ export async function handleDialogue(request: Request, env: DialogueEnv): Promis
           try {
             const line = normalizeLine(JSON.parse(raw), story)
             if (!line) continue
-            if (!sent) firstLineAt = Date.now() - started
+            if (!sent && !narrated) firstLineAt = Date.now() - started
             sent++
             await send({ type: 'line', line })
           } catch {

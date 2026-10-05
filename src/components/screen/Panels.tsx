@@ -319,6 +319,8 @@ export interface SettingsLabels {
   training: string
   trainingAction: string
   restart: string
+  /** The narrated opening before a channel. */
+  prelude: string
   close: string
 }
 
@@ -345,6 +347,7 @@ const defaultSettingsLabels: SettingsLabels = {
   training: 'Field training',
   trainingAction: 'Start',
   restart: 'Rejoin channel',
+  prelude: 'Opening',
   close: 'Close',
 }
 
@@ -411,6 +414,9 @@ export function SettingsPanel({
             ]}
             onChange={(v) => update('feed', v)}
           />
+        </Row>
+        <Row label={l.prelude}>
+          <Segmented value={s.prelude ? 1 : 0} options={onOff} onChange={(v) => update('prelude', !!v)} />
         </Row>
         <Row label={l.translation}>
           <Segmented value={s.showTranslation ? 1 : 0} options={onOff} onChange={(v) => update('showTranslation', !!v)} />

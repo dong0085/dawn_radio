@@ -69,6 +69,8 @@ export interface DialogueRequest {
   history: HistoryLine[]
   /** Set when this batch answers the player. */
   playerMessage?: string
+  /** Opening batch only: a narrator sets the scene and introduces both sides before the channel opens. */
+  prelude?: boolean
   log?: LogSnapshot
   /** Language the channel is heard in, when the player switched it from the story's own. */
   targetLang?: string
@@ -98,13 +100,20 @@ export interface DialogueLine {
   pause?: LinePause
   segments: DialogueSegment[]
   log?: DialogueLogUpdate
+  /** Narration only: what the line brings forward ("scene", a party id, or "player"). */
+  cue?: string
 }
+
+/** Speaker id of the narrator who opens a channel. Never one of the parties. */
+export const NARRATOR = 'narrator'
 
 /** /api/dialogue streams these, one JSON object per line of text. */
 export type DialogueEvent =
   | { type: 'line'; line: DialogueLine }
   /** The player's message in the target language and in their own, sent before the lines that answer it. */
   | { type: 'player'; player: { target: string; native: string } }
+  /** Opening batch: the soundscape under the narration, as a /api/sfx address. Sent before the first narration line. */
+  | { type: 'scene'; sound: string }
   | DialogueDone
   | { type: 'error'; error: string; status: number }
 

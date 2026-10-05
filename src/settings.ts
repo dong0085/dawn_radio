@@ -20,6 +20,8 @@ export interface Settings {
   feed: 'live' | 'drill'
   /** The player's own language (BCP-47) for translations and the radio's wording. null: the browser's language. */
   nativeLang: string | null
+  /** A narrator sets the scene before a channel opens. */
+  prelude: boolean
 }
 
 export const defaultSettings: Settings = {
@@ -33,6 +35,7 @@ export const defaultSettings: Settings = {
   micLanguage: 'target',
   feed: 'live',
   nativeLang: null,
+  prelude: true,
 }
 
 const KEY = 'radio.settings.v1'

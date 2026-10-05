@@ -1,5 +1,6 @@
 // Generates the radio ambience files with the ElevenLabs Sound Effects API.
 // Run once: node --env-file=.env scripts/make-sfx.mjs   (needs ELEVENLABS_API_KEY)
+// Name files to make only those: node --env-file=.env scripts/make-sfx.mjs cave-rescue-opening.mp3
 import { writeFile } from 'node:fs/promises'
 
 const sounds = [
@@ -22,6 +23,13 @@ const sounds = [
     loop: true,
   },
   {
+    // Under the narrator's opening of the cave rescue.
+    file: 'cave-rescue-opening.mp3',
+    prompt: 'Mountain valley at dusk before a storm: distant rolling thunder, wind through pine trees, a rushing stream, the first heavy raindrops. No music, no voices.',
+    duration: 22,
+    loop: true,
+  },
+  {
     file: 'crackle.mp3',
     prompt: 'Short burst of analog walkie-talkie static and crackling interference, signal breaking up.',
     duration: 2,
@@ -32,7 +40,8 @@ const sounds = [
 const key = process.env.ELEVENLABS_API_KEY
 if (!key) throw new Error('ELEVENLABS_API_KEY is not set')
 
-for (const s of sounds) {
+const only = process.argv.slice(2)
+for (const s of sounds.filter((x) => !only.length || only.includes(x.file))) {
   const res = await fetch('https://api.elevenlabs.io/v1/sound-generation?output_format=mp3_44100_128', {
     method: 'POST',
     headers: { 'xi-api-key': key, 'content-type': 'application/json' },

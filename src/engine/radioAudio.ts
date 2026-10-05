@@ -21,7 +21,14 @@ export interface RadioAudioOptions {
   burst?: number
   /** Loudness of the push-to-talk beeps (0–1). */
   beepVolume?: number
+  /** Share of the soundscape that stays under the narrator's voice (0–1). */
+  bedDuck?: number
+  /** Seconds of room echo on the narrator's voice (0 = dry). */
+  narrationRoom?: number
 }
+
+/** Layers of the soundscape under the narration: the scene, and a cue that comes and goes over it. */
+export type BedLayer = 'scene' | 'cue'
 
 const DEFAULTS: Required<RadioAudioOptions> = {
   bandLow: 320,
@@ -30,6 +37,8 @@ const DEFAULTS: Required<RadioAudioOptions> = {
   hiss: 0.03,
   burst: 0.2,
   beepVolume: 0.1,
+  bedDuck: 0.55,
+  narrationRoom: 1.4,
 }
 
 /**
@@ -40,6 +49,11 @@ export class RadioAudio {
   private ctx: AudioContext | null = null
   private master!: GainNode
   private voiceIn!: GainNode
+  private narrationIn!: GainNode
+  private bedGain!: GainNode
+  private bedLayers: Partial<Record<BedLayer, { src: AudioBufferSourceNode; gain: GainNode; key: string }>> = {}
+  /** Bumped on every bed change, so a sound that loads late doesn't start after it was replaced. */
+  private bedIds: Record<BedLayer, number> = { scene: 0, cue: 0 }
   private noiseGain!: GainNode
   private analyser!: AnalyserNode
   private micAnalyser: AnalyserNode | null = null
@@ -73,6 +87,7 @@ export class RadioAudio {
   /** Close the audio context (browsers allow only a few). The next ensure() builds a new one. */
   dispose() {
     this.carrierId++
+    this.bedLayers = {}
     clearTimeout(this.dropoutTimer)
     this.ambienceSource = null
     this.ambienceCache.clear()
@@ -86,6 +101,67 @@ export class RadioAudio {
   get input(): AudioNode {
     this.ensure()
     return this.voiceIn
+  }
+
+  /** Connect the narrator's voice here: off the radio, clean, with a little room around it. */
+  get narrationInput(): AudioNode {
+    this.ensure()
+    return this.narrationIn
+  }
+
+  /**
+   * Plays a loop on one layer of the soundscape, clean (not through the radio), fading over the old one.
+   * Resolves true once it is playing, false if it could not load or was replaced first. null fades the layer out.
+   */
+  async setBed(layer: BedLayer, spec: AmbienceSpec | null, gain = 0.5, fade = 1.5): Promise<boolean> {
+    const ctx = this.ensure()
+    const id = ++this.bedIds[layer]
+    const key = spec ? `${spec.kind}|${spec.src ?? ''}` : ''
+    const current = this.bedLayers[layer]
+    if (current && current.key === key) {
+      current.gain.gain.setTargetAtTime(gain, ctx.currentTime, fade / 3)
+      return true
+    }
+    this.fadeLayer(layer, fade)
+    if (!spec) return false
+    const buffer = await this.ambience(spec)
+    if (!buffer || id !== this.bedIds[layer] || this.ctx !== ctx) return false
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.loop = true
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0, ctx.currentTime)
+    g.gain.linearRampToValueAtTime(gain, ctx.currentTime + fade)
+    src.connect(g).connect(this.bedGain)
+    src.start(0, layer === 'cue' ? Math.random() * buffer.duration : 0)
+    this.bedLayers[layer] = { src, gain: g, key }
+    return true
+  }
+
+  /** full between lines, under while the narrator speaks, off while the channel is paused. */
+  bedLevel(level: 'full' | 'under' | 'off') {
+    if (!this.ctx) return
+    const value = level === 'full' ? 1 : level === 'under' ? this.opts.bedDuck : 0
+    this.bedGain.gain.setTargetAtTime(value, this.ctx.currentTime, level === 'full' ? 0.6 : 0.25)
+  }
+
+  /** Fades the whole soundscape out, as the channel opens or the listener moves on. */
+  bedOff(fade = 2.5) {
+    this.bedIds.scene++
+    this.bedIds.cue++
+    this.fadeLayer('scene', fade)
+    this.fadeLayer('cue', fade)
+  }
+
+  private fadeLayer(layer: BedLayer, fade: number) {
+    const a = this.bedLayers[layer]
+    delete this.bedLayers[layer]
+    if (!a || !this.ctx) return
+    const t = this.ctx.currentTime
+    a.gain.gain.cancelScheduledValues(t)
+    a.gain.gain.setValueAtTime(a.gain.gain.value, t)
+    a.gain.gain.linearRampToValueAtTime(0, t + fade)
+    a.src.stop(t + fade + 0.05)
   }
 
   setVolume(v: number) {
@@ -282,6 +358,20 @@ export class RadioAudio {
     this.voiceGate.connect(this.analyser)
     this.voiceGate.connect(this.master)
 
+    // Narration: off the radio, with a soft room around the voice.
+    this.narrationIn = ctx.createGain()
+    this.narrationIn.connect(this.master)
+    this.narrationIn.connect(this.analyser)
+    if (o.narrationRoom > 0) {
+      const room = ctx.createConvolver()
+      room.buffer = roomResponse(ctx, o.narrationRoom)
+      const wet = ctx.createGain()
+      wet.gain.value = 0.14
+      this.narrationIn.connect(room).connect(wet).connect(this.master)
+    }
+    this.bedGain = ctx.createGain()
+    this.bedGain.connect(this.master)
+
     // Static
     const noise = ctx.createBufferSource()
     noise.buffer = whiteNoise(ctx, 2)
@@ -317,6 +407,17 @@ function whiteNoise(ctx: AudioContext, seconds: number) {
   const data = buffer.getChannelData(0)
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
   return buffer
+}
+
+/** Decaying stereo noise: a small hall's echo. */
+function roomResponse(ctx: AudioContext, seconds: number) {
+  const len = Math.floor(ctx.sampleRate * seconds)
+  const ir = ctx.createBuffer(2, len, ctx.sampleRate)
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch)
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4)
+  }
+  return ir
 }
 
 function rms(analyser: AnalyserNode, buf: Float32Array<ArrayBuffer>) {

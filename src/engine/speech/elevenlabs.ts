@@ -1,6 +1,6 @@
 import { TTS_STREAM_SAMPLE_RATE } from '../../../shared/api.ts'
 import { apiFetch, ApiError, readNdjson } from '../../api'
-import type { Line, Party } from '../../types'
+import { NARRATOR_ID, type Line, type Party } from '../../types'
 import type { RadioAudio } from '../radioAudio'
 import { spokenText, wordsFromAlignment, type CharAlignment } from '../words'
 import { playStream, StreamedClip } from './stream'
@@ -68,11 +68,16 @@ export class ElevenLabsSpeech implements SpeechProvider {
       words,
       duration: buffer.duration,
       filtered: true,
-      play: () => playBuffer(this.audio, buffer, this.speed()),
+      play: () => playBuffer(this.audio, buffer, this.speed(), this.output(line)),
     }
   }
 
   private speed = () => this.opts.speed?.() ?? 1
+
+  /** Radio voices go through the radio filter; the narrator speaks off the radio. */
+  private output(line: Line) {
+    return line.speaker === NARRATOR_ID ? this.audio.narrationInput : this.audio.input
+  }
 
   private async prepareStream(key: string, line: Line, voiceId: string, lang: string): Promise<PreparedSpeech> {
     let entry = this.clips.get(key)
@@ -92,7 +97,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
       },
       filtered: true,
       archiveKey: clip.archiveKey,
-      play: () => playStream(audio, clip, this.speed),
+      play: () => playStream(audio, clip, this.speed, this.output(line)),
     }
   }
 
@@ -149,7 +154,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
 }
 
 /** Plays a whole clip at `speed`; positions stay in seconds of the original clip. */
-export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: number): Playback {
+export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: number, to: AudioNode = audio.input): Playback {
   const ctx = audio.context
   const buffer = speed === 1 ? original : stretchBuffer(ctx, original, speed)
   let offset = 0
@@ -168,7 +173,7 @@ export function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: numb
   const start = () => {
     const src = ctx.createBufferSource()
     src.buffer = buffer
-    src.connect(audio.input)
+    src.connect(to)
     src.onended = () => {
       if (src === source && !paused) end('ended')
     }

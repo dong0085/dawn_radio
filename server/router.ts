@@ -8,14 +8,15 @@ import { countUsage } from './usage.ts'
 import { rateLimit } from './rateLimit.ts'
 import { handleStt, type SttEnv } from './stt.ts'
 import { handleRecordings, type RecordingsEnv } from './recordings.ts'
+import { handleSfx, type SfxEnv } from './sfx.ts'
 import { handleSync } from './sync.ts'
 import { handleTranslate, type TranslateEnv } from './translate.ts'
 import { handleTts, type TtsEnv } from './tts.ts'
 
-export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv, AdminEnv, RecordingsEnv {}
+export interface Env extends TtsEnv, SttEnv, DialogueEnv, TranslateEnv, AdminEnv, RecordingsEnv, SfxEnv {}
 
 /** Routes whose requests are counted per player and day (they cost money). */
-const COUNTED = new Set(['/dialogue', '/channel', '/tts', '/tts/stream', '/stt', '/translate'])
+const COUNTED = new Set(['/dialogue', '/channel', '/tts', '/tts/stream', '/stt', '/translate', '/sfx'])
 
 /** Paths with ids share one rate limit, e.g. /sessions/cave-rescue -> /sessions. */
 const routeOf = (path: string) => (/^\/(admin|sessions|channels|recordings|audio)(\/|$)/.exec(path)?.[0].replace(/\/$/, '') ?? path)
@@ -65,6 +66,8 @@ export async function handleApi(request: Request, env: Env, waitUntil: WaitUntil
         return await handleTts(request, env, { stream: true }, { player, waitUntil })
       case '/stt':
         return await handleStt(request, env)
+      case '/sfx':
+        return await handleSfx(request, env)
       case '/translate':
         return await handleTranslate(request, env)
       default:

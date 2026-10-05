@@ -1,5 +1,5 @@
 import type { ScriptedScenario } from '../engine/sources/scripted'
-import type { LogUpdate, Segment } from '../types'
+import type { LogUpdate, ScriptedPrelude, Segment } from '../types'
 
 const L = (speaker: 'rescue' | 'control', ...pairs: [string, string][]) => ({
   speaker,
@@ -11,6 +11,73 @@ const t = (text: string, translation: string): Segment => ({ text, translation }
 
 /** Attaches a log update to a line. */
 const logged = <T extends object>(line: T, log: LogUpdate) => ({ ...line, log })
+
+/** A narration segment: spoken with its pause tags, shown without them. */
+const n = (spoken: string, translation: string): Segment => {
+  const text = spoken.replace(/\s*\[[^\]]*\]\s*/g, ' ').trim()
+  return text === spoken ? { text, translation } : { text, translation, spoken }
+}
+
+/** The narrator's opening, in the same French as the channel, before the first call. */
+const prelude: ScriptedPrelude = {
+  // Made by scripts/make-sfx.mjs. Until the file exists, the opening plays without it.
+  scene: { kind: 'none', src: '/sfx/cave-rescue-opening.mp3', gain: 0.5 },
+  lines: [
+    {
+      cue: 'scene',
+      delivery: 'mysterious',
+      segments: [
+        n('Le Vercors, en fin d’après-midi.', 'The Vercors mountains, late in the afternoon.'),
+        n('Le ciel est gris. [pause] Au loin, l’orage approche.', 'The sky is grey. In the distance, the storm is coming.'),
+      ],
+    },
+    {
+      cue: 'scene',
+      delivery: 'hushed',
+      segments: [
+        n('Sous la montagne, il y a la Grotte des Fées.', 'Under the mountain lies the Grotte des Fées, the Fairies’ Cave.'),
+        n('Un spéléologue, Julien, est entré ce matin. [long pause] Il n’est jamais ressorti.', 'A caver, Julien, went in this morning. He never came out.'),
+      ],
+    },
+    {
+      cue: 'scene',
+      delivery: 'warm',
+      segments: [
+        n('Alors écoutez bien. [pause] Ce soir, chaque mot peut compter.', 'So listen closely. Tonight, every word may count.'),
+        n('Restez avec nous jusqu’au bout.', 'Stay with us until the end.'),
+      ],
+    },
+    {
+      cue: 'rescue',
+      delivery: 'calm',
+      segments: [
+        n('Dans la grotte, il y a Léa, chef d’équipe, avec son partenaire Karim.', 'In the cave is Léa, the team leader, with her partner Karim.'),
+        n('Elle a froid, elle est fatiguée… [short pause] mais elle n’abandonne jamais.', 'She’s cold, she’s tired… but she never gives up.'),
+      ],
+    },
+    {
+      cue: 'control',
+      delivery: 'calm',
+      segments: [
+        n('En surface, il y a Marc, au poste de contrôle.', 'At the surface is Marc, at the control post.'),
+        n('Il a la carte, la radio, [short pause] et un œil sur la pluie.', 'He has the map, the radio, and one eye on the rain.'),
+      ],
+    },
+    {
+      cue: 'player',
+      delivery: 'warm',
+      segments: [
+        n('Et vous ? [pause] Vous connaissez bien cette grotte.', 'And you? You know this cave well.'),
+        n('Vous êtes sur la même fréquence. Quand vous parlez, ils vous entendent.', 'You’re on the same frequency. When you speak, they hear you.'),
+      ],
+    },
+    {
+      cue: 'scene',
+      delivery: 'dramatic',
+      segments: [n('La pluie commence. [long pause] Le canal est ouvert.', 'The rain is starting. The channel is open.')],
+    },
+  ],
+}
 
 const RESCUE = '#2fc4ff'
 const CONTROL = '#ffb23f'
@@ -53,6 +120,14 @@ export const caveRescue: ScriptedScenario = {
       },
     ],
     player: { name: 'You', color: '#3dff9a' },
+    narrator: {
+      color: '#f2e6c9',
+      voice: {
+        elevenLabsVoiceId: 'nPczCjzI2devNBz1zQrb',
+        browserVoiceNames: ['Thomas', 'Henri', 'Google français'],
+        browserPitch: 0.95,
+      },
+    },
     log: {
       title: 'Field log',
       sections: [
@@ -75,6 +150,8 @@ export const caveRescue: ScriptedScenario = {
   },
 
   batchSize: 4,
+
+  prelude,
 
   script: [
     L('control', ['Équipe de secours, ici Contrôle. Quelle est votre position ?', 'Rescue Team, this is Control. What is your position?']),

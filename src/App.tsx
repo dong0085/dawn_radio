@@ -37,7 +37,7 @@ import { useStoredState } from './hooks/useStoredState'
 import { caveRescue } from './scenarios/caveRescue'
 import { useSettings } from './settings'
 import { defaultTheme, themeVars, type RadioTheme } from './theme'
-import { PLAYER_ID, type Party, type TimedWord } from './types'
+import { NARRATOR_ID, PLAYER_ID, type Party, type TimedWord } from './types'
 import type { ScriptedScenario } from './engine/sources/scripted'
 import { nexusSkin } from './skins/nexus'
 import './layout.css'
@@ -181,8 +181,21 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
 
   const transmitting = activity === 'transmitting' || activity === 'transcribing'
   const talkMode = settings.inputMode === 'keyboard' || txMode === 'keyboard' ? 'toggle' : 'hold'
+  /** The narrator's line on screen, while a narrated opening plays. */
+  const narration = current?.line.speaker === NARRATOR_ID ? current.line : null
+  /** The side the narrator is introducing: its light comes on, like a spotlight on stage. */
+  const spotlight = narration && onAir === NARRATOR_ID ? narration.cue : undefined
+  const narrator: Party | undefined = scenario.narrator && {
+    id: NARRATOR_ID,
+    name: scenario.narrator.name ?? t.narrator,
+    side: 'left',
+    color: scenario.narrator.color,
+    voice: scenario.narrator.voice,
+  }
   const speakerColor =
-    onAir === PLAYER_ID ? scenario.player.color : (scenario.parties.find((p) => p.id === (onAir ?? current?.line.speaker))?.color ?? left.color)
+    onAir === PLAYER_ID
+      ? scenario.player.color
+      : ([...scenario.parties, ...(narrator ? [narrator] : [])].find((p) => p.id === (onAir ?? current?.line.speaker))?.color ?? left.color)
 
   /** Word the player tapped: looked up in context while the channel waits. */
   const [wordCard, setWordCard] = useState<{
@@ -252,9 +265,11 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             ? 'replay'
             : phase === 'ended'
               ? 'off'
-              : activity === 'waiting'
-                ? 'loading'
-                : 'live'
+              : narration
+                ? 'prelude'
+                : activity === 'waiting'
+                  ? 'loading'
+                  : 'live'
 
   const led: LedState =
     phase !== 'running' ? 'idle' : transmitting ? 'tx' : activity === 'waiting' && !paused ? 'busy' : 'rx'
@@ -480,7 +495,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   }
   const transcriptProps = {
     entries: state.transcript,
-    parties: scenario.parties,
+    parties: narrator ? [...scenario.parties, narrator] : scenario.parties,
     player: scenario.player,
     showTranslation: settings.showTranslation,
     onToggleTranslation: toggleTranslation,
@@ -542,13 +557,18 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
 
       <div className="main-panel panel">
         <PartyBar
-          left={{ name: left.name, color: left.color, active: onAir === left.id }}
-          right={{ name: right.name, color: right.color, active: onAir === right.id }}
+          left={{ name: left.name, color: left.color, active: onAir === left.id || spotlight === left.id }}
+          right={{ name: right.name, color: right.color, active: onAir === right.id || spotlight === right.id }}
           center={<LiveIndicator mode={liveMode} labels={t.live} />}
         />
         <div className="main-panel__content" data-tour="subtitles">
           <AnimatePresence mode="wait">{content}</AnimatePresence>
           {notice && !wordCard && <span className="notice">{notice}</span>}
+          {narration && !current?.replay && phase === 'running' && !transmitting && (
+            <button type="button" className="chip skip-chip" onClick={() => conversation.skipPrelude()}>
+              {t.skipPrelude}
+            </button>
+          )}
           <AnimatePresence>
             {wordCard && wordCard.lineId === current?.line.id && !transmitting && (
               <WordCard
@@ -685,8 +705,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const device: DeviceViewProps = {
     style: vars,
     led,
-    leftLight: { color: left.color, active: onAir === left.id && !paused },
-    rightLight: { color: right.color, active: onAir === right.id && !paused },
+    leftLight: { color: left.color, active: (onAir === left.id || spotlight === left.id) && !paused },
+    rightLight: { color: right.color, active: (onAir === right.id || spotlight === right.id) && !paused },
     screen,
     controls,
   }

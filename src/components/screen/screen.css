@@ -247,6 +247,19 @@
   color: var(--party-right);
 }
 
+/* Skips the narrated opening. */
+.chip.skip-chip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  height: 22px;
+  opacity: 0.75;
+}
+
+.chip.skip-chip:hover {
+  opacity: 1;
+}
+
 /* ---------- Subtitle ---------- */
 
 .subtitle {

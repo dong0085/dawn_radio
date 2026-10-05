@@ -17,7 +17,6 @@ const LOOP_SECONDS = 8
 
 /** Loads (or renders) the loop for a spec. Cached by the caller. */
 export async function loadAmbience(ctx: BaseAudioContext, spec: AmbienceSpec): Promise<AudioBuffer | null> {
-  if (spec.kind === 'none') return null
   if (spec.src) {
     try {
       const res = await fetch(spec.src)
@@ -26,7 +25,7 @@ export async function loadAmbience(ctx: BaseAudioContext, spec: AmbienceSpec): P
       /* fall back to the generated loop */
     }
   }
-  return renderAmbience(spec.kind, ctx.sampleRate)
+  return spec.kind === 'none' ? null : renderAmbience(spec.kind, ctx.sampleRate)
 }
 
 async function renderAmbience(kind: Exclude<AmbienceKind, 'none'>, sampleRate: number) {

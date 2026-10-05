@@ -1,7 +1,9 @@
 import type { AmbienceSpec } from './engine/ambience'
-import type { LinePause } from '../shared/api.ts'
+import { NARRATOR, type LinePause } from '../shared/api.ts'
 /** The player is always the third participant on the channel. */
 export const PLAYER_ID = 'player'
+/** The voice that opens a channel, off the radio. */
+export const NARRATOR_ID = NARRATOR
 
 export type Side = 'left' | 'right'
 
@@ -33,6 +35,24 @@ export interface PartyRadio {
   signal?: number
 }
 
+/** The storyteller who sets the scene and introduces both sides before the channel opens. */
+export interface NarratorConfig {
+  /** Shown with the narration and in the transcript. Defaults to the radio's word for a narrator in the player's language. */
+  name?: string
+  /** Subtitle and waveform color. Any CSS color. */
+  color: string
+  voice: PartyVoice
+  /** Loudness of the soundscape under the narration, 0–1. */
+  bedGain?: number
+}
+
+/** The opening a recorded channel plays before its first line. */
+export interface ScriptedPrelude {
+  /** Sound under the narration. */
+  scene?: AmbienceSpec
+  lines: Omit<Line, 'id' | 'speaker'>[]
+}
+
 export interface PlayerConfig {
   name: string
   /** Transmit light color. Any CSS color. */
@@ -59,6 +79,8 @@ export interface Line {
   pause?: LinePause
   /** Changes to the log, applied when this line starts playing. */
   log?: LogUpdate
+  /** Narration only: what the line brings forward. "scene" keeps the opening soundscape; a party id brings up their end of the channel; "player" turns to the listener. */
+  cue?: string
   /** Recorded audio of this line, when it plays again (see TranscriptEntry.audio). */
   audio?: string
   /** Plays again only this far (seconds): where the player cut in. */
@@ -171,6 +193,8 @@ export interface Scenario {
   premise: string
   parties: [Party, Party]
   player: PlayerConfig
+  /** Opens the channel with a narrated scene. Leave out to start on the radio straight away. */
+  narrator?: NarratorConfig
   /** Tracks people, places and events as they come up. Leave out to hide the log. */
   log?: LogConfig
   /** Key the progress is saved under (defaults to id), so each language keeps its own. */
