@@ -7,7 +7,7 @@ import { recognitionSupported } from './recognizer'
 import { createBrowserTranscriber, createCloudTranscriber, type Transcriber } from './transcriber'
 import type { LineSource } from './sources/types'
 import type { Playback, PreparedSpeech, SpeechEngine, SpeechProvider } from './speech/types'
-import type { SavedSession } from './session'
+import { sessionId, type SavedSession } from './session'
 import { wordIndexAt } from './words'
 
 export type Phase = 'standby' | 'running' | 'ended'
@@ -63,6 +63,27 @@ export interface ConversationOptions {
   lookahead?: number
   /** Silence on the channel before each line, in ms (random within each range). */
   gaps?: Partial<GapRanges>
+  /** Status messages flashed on the screen. */
+  notices?: Partial<ConversationNotices>
+}
+
+/** Short status messages the radio flashes on its screen. */
+export interface ConversationNotices {
+  garbled: string
+  nothingReceived: string
+  channelError: string
+  offAir: string
+  signalLost: string
+  backupVoice: string
+}
+
+export const DEFAULT_NOTICES: ConversationNotices = {
+  garbled: 'Transmission garbled',
+  nothingReceived: 'No transmission received',
+  channelError: 'Channel error',
+  offAir: 'Channel off the air',
+  signalLost: 'Signal lost. Retrying…',
+  backupVoice: 'Voice service unavailable. Using backup voice.',
 }
 
 /** Ranges in ms, [min, max]. */
@@ -118,6 +139,7 @@ export class Conversation {
   private listeners = new Set<() => void>()
   private opts: Required<Pick<ConversationOptions, 'refillAt' | 'lookahead'>> & ConversationOptions
   private gaps: GapRanges
+  private notices: ConversationNotices
 
   private queue: QueueItem[] = []
   private epoch = 0
@@ -147,6 +169,7 @@ export class Conversation {
   constructor(options: ConversationOptions) {
     this.opts = { refillAt: 3, lookahead: 1, ...options }
     this.gaps = { ...DEFAULT_GAPS, ...options.gaps }
+    this.notices = { ...DEFAULT_NOTICES, ...options.notices }
     this.settings = options.settings
     this.state = initialState('browser', initialLog(options.scenario.log?.initial))
   }
@@ -259,7 +282,7 @@ export class Conversation {
         text = await this.recognizer.stop()
       } catch (err) {
         console.warn('[conversation] transcription failed', err)
-        this.flash('Transmission garbled')
+        this.flash(this.notices.garbled)
         text = ''
       }
       this.recognizer = null
@@ -273,7 +296,7 @@ export class Conversation {
 
     if (!text) {
       this.set({ activity: 'idle', txText: '' })
-      this.flash('No transmission received')
+      this.flash(this.notices.nothingReceived)
       this.advance()
       return
     }
@@ -305,7 +328,7 @@ export class Conversation {
     if (!s.transcript.length) return null
     return {
       v: 1,
-      scenarioId: this.opts.scenario.id,
+      scenarioId: sessionId(this.opts.scenario),
       savedAt: Date.now(),
       phase: s.phase === 'ended' ? 'ended' : 'running',
       elapsed: s.phase === 'running' ? this.elapsed() : this.resumeElapsed,
@@ -465,11 +488,11 @@ export class Conversation {
         this.batchAbort = null
         if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
           // Retrying won't help; wait for the player to resume.
-          this.flash(err.status === 410 ? 'Channel off the air' : 'Channel error', 6000)
+          this.flash(err.status === 410 ? this.notices.offAir : this.notices.channelError, 6000)
           this.set({ paused: true, activity: 'idle' })
           return
         }
-        this.flash('Signal lost. Retrying…')
+        this.flash(this.notices.signalLost)
         this.gapTimer = setTimeout(() => this.advance(), 3000)
       })
   }
@@ -497,7 +520,7 @@ export class Conversation {
       engine === 'elevenlabs' && elevenlabs
         ? elevenlabs.prepare(item.line, party, lang).catch((err) => {
             console.warn('[conversation] ElevenLabs failed, using browser voice', err)
-            this.flash('Voice service unavailable. Using backup voice.')
+            this.flash(this.notices.backupVoice)
             return browser.prepare(item.line, party, lang)
           })
         : browser.prepare(item.line, party, lang)

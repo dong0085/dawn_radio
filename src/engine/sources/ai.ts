@@ -10,6 +10,10 @@ export interface AiSourceOptions {
   channel?: DialogueRequest['channel']
   /** How many recent lines to send word for word; older ones live in the summary. */
   recentLines?: number
+  /** Language the channel is heard in, when it differs from the story's own. */
+  targetLang?: string
+  /** The player's language for translations. */
+  nativeLang?: string
 }
 
 // Unique across reloads, so saved transcript ids never collide with new ones.
@@ -65,6 +69,8 @@ export class AiSource implements LineSource {
         ].slice(-this.opts.recentLines),
         playerMessage: request.playerMessage,
         log: toSnapshot(request.log),
+        targetLang: this.opts.targetLang,
+        nativeLang: this.opts.nativeLang,
       },
       {
         signal,

@@ -1,4 +1,4 @@
-import type { LogState, ScenarioEnding, TranscriptEntry } from '../types'
+import type { LogState, Scenario, ScenarioEnding, TranscriptEntry } from '../types'
 import { dropSession, queueSession } from '../sync'
 
 /** Everything needed to pick a channel back up after a reload. */
@@ -18,6 +18,12 @@ export interface SavedSession {
 }
 
 const key = (scenarioId: string) => `radio.session.${scenarioId}`
+
+/** Where a scenario's progress is saved: each language a channel is heard in keeps its own. */
+export const sessionId = (scenario: Pick<Scenario, 'id' | 'session'>) => scenario.session ?? scenario.id
+
+/** Session id of a channel heard in `lang`; its own language keeps the plain id. */
+export const languageSessionId = (id: string, lang: string, ownLang: string) => (lang === ownLang ? id : `${id}@${lang}`)
 
 export function loadSession(scenarioId: string): SavedSession | null {
   try {
@@ -49,4 +55,17 @@ export function clearSession(scenarioId: string) {
   }
   // A fresh start clears every second until the first line; only a real removal reaches the server.
   if (existed) dropSession(scenarioId)
+}
+
+/** Wipes a channel's progress in every language it was heard in. */
+export function clearChannelSessions(id: string) {
+  clearSession(id)
+  try {
+    const prefix = key(`${id}@`)
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(prefix))
+      .forEach((k) => clearSession(k.slice(key('').length)))
+  } catch {
+    /* ignore */
+  }
 }

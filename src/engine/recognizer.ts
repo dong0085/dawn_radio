@@ -48,7 +48,8 @@ export function createRecognizer(lang: string, finalWaitMs = 1800): Recognizer |
     start(onText) {
       text = ''
       rec = new Ctor()
-      rec.lang = lang
+      // Browsers list Cantonese under Hong Kong Chinese.
+      rec.lang = lang.startsWith('yue') ? 'zh-HK' : lang
       rec.continuous = true
       rec.interimResults = true
       rec.onresult = (e) => {

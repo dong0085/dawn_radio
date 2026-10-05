@@ -135,6 +135,9 @@ export interface LogConfig {
   newLabel?: string
   /** Flashed on the main screen when the log changes. */
   updatedNotice?: string
+  /** Key that shows or hides the translations. */
+  translationLabel?: string
+  closeLabel?: string
   /** State of the log when the channel opens. */
   initial?: LogUpdate
 }
@@ -162,6 +165,8 @@ export interface Scenario {
   player: PlayerConfig
   /** Tracks people, places and events as they come up. Leave out to hide the log. */
   log?: LogConfig
+  /** Key the progress is saved under (defaults to id), so each language keeps its own. */
+  session?: string
 }
 
 /** A word with its timing inside a line's audio, in seconds. */

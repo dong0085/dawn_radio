@@ -179,7 +179,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
           style={{ ...box(skin.replay.area), clipPath: skin.replay.clip }}
           onClick={replay.onReplay}
           disabled={replay.disabled}
-          aria-label={`${replay.label ?? 'Repeat'} last line`}
+          aria-label={replay.label ?? 'Repeat last line'}
         >
           <span className="photo-key__face" style={patch(skin, skin.replay.area.x, skin.replay.area.y)} />
         </button>

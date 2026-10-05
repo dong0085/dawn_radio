@@ -70,6 +70,10 @@ export interface DialogueRequest {
   /** Set when this batch answers the player. */
   playerMessage?: string
   log?: LogSnapshot
+  /** Language the channel is heard in, when the player switched it from the story's own. */
+  targetLang?: string
+  /** The player's language for translations, when it differs from the story's. */
+  nativeLang?: string
 }
 
 export interface DialogueSegment {

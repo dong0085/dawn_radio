@@ -33,7 +33,13 @@ export interface ChannelData {
   channel: { bible: StoredChannel['bible']; sig: string }
 }
 
-export function channelData(ch: StoredChannel): ChannelData {
+/** Wording the radio adds around a made channel, in the player's language. */
+export interface ChannelWords {
+  player: string
+  incident: (number: string) => string
+}
+
+export function channelData(ch: StoredChannel, words: ChannelWords = { player: 'You', incident: (n) => `Incident ${n}` }): ChannelData {
   const { bible, display } = ch
   const colors = PALETTES[ch.number % PALETTES.length]
 
@@ -52,7 +58,7 @@ export function channelData(ch: StoredChannel): ChannelData {
 
   const scenario: Scenario = {
     id: ch.id,
-    incident: `Incident ${String(ch.number).padStart(2, '0')}`,
+    incident: words.incident(String(ch.number).padStart(2, '0')),
     title: display.title,
     channel: channelLabel(ch.number),
     frequency: frequencyFor(ch.number),
@@ -60,11 +66,10 @@ export function channelData(ch: StoredChannel): ChannelData {
     nativeLang: bible.nativeLang,
     premise: display.premise,
     parties,
-    player: { name: 'You', color: PLAYER_COLOR },
+    player: { name: words.player, color: PLAYER_COLOR },
     log: {
       title: display.log.title,
       sections: display.log.sections,
-      updatedNotice: 'Log updated',
       initial: {
         objective: display.log.objective.text ? display.log.objective : undefined,
         // Party entries take the party's light color.

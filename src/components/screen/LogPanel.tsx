@@ -27,9 +27,9 @@ export interface LogPanelProps extends Omit<LogViewProps, 'since'> {
   seenVersion: number
 }
 
-const TranslationChip = ({ on, onClick }: { on: boolean; onClick: () => void }) => (
+const TranslationChip = ({ on, onClick, label = 'Translation' }: { on: boolean; onClick: () => void; label?: string }) => (
   <button type="button" className={`chip${on ? ' is-on' : ''}`} onClick={onClick}>
-    Translation
+    {label}
   </button>
 )
 
@@ -41,7 +41,8 @@ export function LogPanel({ onToggleTranslation, onClose, seenVersion, ...view }:
     <ScreenPanel
       title={view.config.title}
       onClose={onClose}
-      headerExtra={<TranslationChip on={view.showTranslation} onClick={onToggleTranslation} />}
+      closeLabel={view.config.closeLabel}
+      headerExtra={<TranslationChip on={view.showTranslation} onClick={onToggleTranslation} label={view.config.translationLabel} />}
     >
       <LogView {...view} since={since} />
     </ScreenPanel>
@@ -59,7 +60,7 @@ export function DockedLog({ onToggleTranslation, side, ...view }: DockedLogProps
     <aside className={`docked-log docked-log--${side}`} data-tour="log" aria-label={view.config.title}>
       <header className="docked-log__head">
         <span className="screen-panel__title">{view.config.title}</span>
-        <TranslationChip on={view.showTranslation} onClick={onToggleTranslation} />
+        <TranslationChip on={view.showTranslation} onClick={onToggleTranslation} label={view.config.translationLabel} />
       </header>
       <div className="docked-log__body">
         <LogView {...view} since={Math.max(0, view.log.version - 1)} />

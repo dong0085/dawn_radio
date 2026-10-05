@@ -2,8 +2,8 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ApiConfig } from '../../shared/api.ts'
 import { getConfig, translate } from '../api'
 import type { Settings } from '../settings'
-import { Conversation } from './conversation'
-import { clearSession, loadSession, saveSession } from './session'
+import { Conversation, type ConversationNotices } from './conversation'
+import { clearSession, loadSession, saveSession, sessionId } from './session'
 import { RadioAudio, type RadioAudioOptions } from './radioAudio'
 import { BrowserSpeech } from './speech/browser'
 import { ElevenLabsSpeech } from './speech/elevenlabs'
@@ -20,10 +20,21 @@ export interface UseConversationOptions {
   ttsEndpoint?: string
   /** Reopen the last saved session for this scenario (default true). */
   resume?: boolean
+  /** Status messages flashed on the screen. */
+  notices?: Partial<ConversationNotices>
 }
 
 /** Builds the audio graph, voices and controller once, and exposes the live state. */
-export function useConversation({ scenario, createSource, settings, audio: audioOptions, ttsEndpoint = '/tts', resume = true }: UseConversationOptions) {
+export function useConversation({
+  scenario,
+  createSource,
+  settings,
+  audio: audioOptions,
+  ttsEndpoint = '/tts',
+  resume = true,
+  notices,
+}: UseConversationOptions) {
+  const session = sessionId(scenario)
   const [config, setConfig] = useState<ApiConfig | null>(null)
 
   const [{ conversation, audio, cfg }] = useState(() => {
@@ -37,6 +48,7 @@ export function useConversation({ scenario, createSource, settings, audio: audio
       source: createSource(get),
       audio,
       settings,
+      notices,
       cloudSpeechToText: () => !!cfg.current?.stt,
       translatePlayer: (text) => {
         if (!cfg.current?.translate) return null
@@ -52,7 +64,7 @@ export function useConversation({ scenario, createSource, settings, audio: audio
         elevenlabs: new ElevenLabsSpeech(audio, { endpoint: ttsEndpoint, speed: () => get().speechRate }),
       },
     })
-    const saved = resume ? loadSession(scenario.id) : null
+    const saved = resume ? loadSession(session) : null
     if (saved) conversation.restore(saved)
     return { conversation, audio, cfg }
   })
@@ -66,7 +78,7 @@ export function useConversation({ scenario, createSource, settings, audio: audio
       const snap = conversation.snapshot()
       if (snap) saveSession(snap)
       // A fresh start (nothing said yet) replaces the old save.
-      else if (conversation.getState().phase === 'running') clearSession(scenario.id)
+      else if (conversation.getState().phase === 'running') clearSession(session)
     }
     const unsubscribe = conversation.subscribe(() => {
       timer ??= setTimeout(save, 1000)
@@ -76,11 +88,12 @@ export function useConversation({ scenario, createSource, settings, audio: audio
     window.addEventListener('pagehide', save)
     return () => {
       unsubscribe()
-      clearTimeout(timer)
+      // Retuning (another channel or language) unmounts the radio: keep what just changed.
+      if (timer) save()
       document.removeEventListener('visibilitychange', onHide)
       window.removeEventListener('pagehide', save)
     }
-  }, [conversation, scenario.id])
+  }, [conversation, session])
 
   useEffect(() => {
     conversation.updateSettings(settings)

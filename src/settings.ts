@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 
 export type VoiceEngineSetting = 'auto' | 'elevenlabs' | 'browser'
 export type InputMode = 'voice' | 'keyboard'
@@ -18,6 +18,8 @@ export interface Settings {
   micLanguage: 'target' | 'native'
   /** live: lines written as you listen (needs the server) · drill: the fixed training recording. */
   feed: 'live' | 'drill'
+  /** The player's own language (BCP-47) for translations and the radio's wording. null: the browser's language. */
+  nativeLang: string | null
 }
 
 export const defaultSettings: Settings = {
@@ -30,6 +32,7 @@ export const defaultSettings: Settings = {
   inputMode: 'voice',
   micLanguage: 'target',
   feed: 'live',
+  nativeLang: null,
 }
 
 const KEY = 'radio.settings.v1'
@@ -43,20 +46,30 @@ function load(): Settings {
   }
 }
 
+// One copy for the whole page, so every part of the radio sees the same settings.
+let current: Settings | null = null
+const listeners = new Set<() => void>()
+
+const get = () => (current ??= load())
+const subscribe = (fn: () => void) => {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
+function set(next: Settings) {
+  current = next
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next))
+  } catch {
+    /* storage unavailable */
+  }
+  listeners.forEach((fn) => fn())
+}
+
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings>(load)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(settings))
-    } catch {
-      /* storage unavailable */
-    }
-  }, [settings])
-
+  const settings = useSyncExternalStore(subscribe, get)
   const update = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]) => {
-    setSettings((s) => ({ ...s, [key]: value }))
+    set({ ...get(), [key]: value })
   }, [])
-
   return [settings, update] as const
 }

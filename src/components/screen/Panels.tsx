@@ -9,11 +9,12 @@ export interface ScreenPanelProps {
   title: string
   onClose: () => void
   headerExtra?: ReactNode
+  closeLabel?: string
   children: ReactNode
 }
 
 /** Full-screen overlay inside the glass (transcript, settings). */
-export function ScreenPanel({ title, onClose, headerExtra, children }: ScreenPanelProps) {
+export function ScreenPanel({ title, onClose, headerExtra, closeLabel = 'Close', children }: ScreenPanelProps) {
   return (
     <motion.section
       className="screen-panel"
@@ -25,7 +26,7 @@ export function ScreenPanel({ title, onClose, headerExtra, children }: ScreenPan
       <header className="screen-panel__head">
         <span className="screen-panel__title">{title}</span>
         {headerExtra}
-        <button type="button" className="screen-key screen-key--small" onClick={onClose} aria-label="Close">
+        <button type="button" className="screen-key screen-key--small" onClick={onClose} aria-label={closeLabel}>
           <CloseIcon size={16} />
         </button>
       </header>
@@ -45,9 +46,26 @@ export interface TranscriptPanelProps {
   liveId?: string
   /** Id of an entry to scroll to and mark, e.g. from the log timeline. */
   focusId?: string
-  emptyText?: string
   /** Language tag of the target language, for the player's rewritten lines. */
   targetLang?: string
+  labels?: Partial<TranscriptLabels>
+}
+
+export interface TranscriptLabels {
+  title: string
+  translation: string
+  /** Tag on a line the player cut off. */
+  cutOff: string
+  empty: string
+  close: string
+}
+
+const defaultTranscriptLabels: TranscriptLabels = {
+  title: 'Transcript',
+  translation: 'Translation',
+  cutOff: 'cut off',
+  empty: 'Nothing on this channel yet.',
+  close: 'Close',
 }
 
 /** Compares two lines ignoring case, spacing and punctuation. */
@@ -66,9 +84,10 @@ export function TranscriptPanel({
   onClose,
   liveId,
   focusId,
-  emptyText = 'Nothing on this channel yet.',
   targetLang,
+  labels,
 }: TranscriptPanelProps) {
+  const l = { ...defaultTranscriptLabels, ...labels }
   const endRef = useRef<HTMLDivElement>(null)
   const focusRef = useRef<HTMLLIElement>(null)
   useEffect(() => {
@@ -82,15 +101,16 @@ export function TranscriptPanel({
 
   return (
     <ScreenPanel
-      title="Transcript"
+      title={l.title}
       onClose={onClose}
+      closeLabel={l.close}
       headerExtra={
         <button type="button" className={`chip${showTranslation ? ' is-on' : ''}`} onClick={onToggleTranslation}>
-          Translation
+          {l.translation}
         </button>
       }
     >
-      {entries.length === 0 && <p className="transcript__empty">{emptyText}</p>}
+      {entries.length === 0 && <p className="transcript__empty">{l.empty}</p>}
       <ol className="transcript">
         {entries.map((e) => {
           const p = who(e.speaker)
@@ -104,7 +124,7 @@ export function TranscriptPanel({
               <div className="transcript__meta">
                 <span style={{ color: p.color }}>{p.name}</span>
                 <time>{formatElapsed(e.at)}</time>
-                {e.interrupted && <span className="transcript__cut">cut off</span>}
+                {e.interrupted && <span className="transcript__cut">{l.cutOff}</span>}
               </div>
               <p className="transcript__target">{e.segments.map((s) => s.text).join(' ')}</p>
               {e.rendering && !sameText(e.rendering, e.segments.map((s) => s.text).join(' ')) && (
@@ -147,6 +167,70 @@ export function Segmented<T extends string | number>({ value, options, onChange 
   )
 }
 
+export interface SettingsLabels {
+  title: string
+  feed: string
+  live: string
+  drill: string
+  translation: string
+  highlight: string
+  speed: string
+  static: string
+  staticLevels: { off: string; low: string; mid: string; high: string }
+  volume: string
+  voice: string
+  voices: { auto: string; elevenlabs: string; device: string }
+  talkInput: string
+  inputs: { voice: string; keyboard: string }
+  micLanguage: string
+  on: string
+  off: string
+  /** The player's own language. */
+  yourLanguage: string
+  /** Language the channel is heard in. */
+  channelLanguage: string
+  training: string
+  trainingAction: string
+  restart: string
+  close: string
+}
+
+const defaultSettingsLabels: SettingsLabels = {
+  title: 'Settings',
+  feed: 'Feed',
+  live: 'Live',
+  drill: 'Drill',
+  translation: 'Translation',
+  highlight: 'Word highlight',
+  speed: 'Speed',
+  static: 'Static',
+  staticLevels: { off: 'Off', low: 'Low', mid: 'Mid', high: 'High' },
+  volume: 'Volume',
+  voice: 'Voice',
+  voices: { auto: 'Auto', elevenlabs: 'Eleven', device: 'Device' },
+  talkInput: 'Talk input',
+  inputs: { voice: 'Voice', keyboard: 'Keyboard' },
+  micLanguage: 'Mic language',
+  on: 'On',
+  off: 'Off',
+  yourLanguage: 'Your language',
+  channelLanguage: 'Channel language',
+  training: 'Field training',
+  trainingAction: 'Start',
+  restart: 'Rejoin channel',
+  close: 'Close',
+}
+
+/** A language picker row: the current value and the choices, each named for the player. */
+export interface LanguageChoice {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (lang: string) => void
+  /** Small note under the label. */
+  note?: string
+  disabled?: boolean
+}
+
 export interface SettingsPanelProps {
   settings: Settings
   update: <K extends keyof Settings>(key: K, value: Settings[K]) => void
@@ -156,13 +240,15 @@ export interface SettingsPanelProps {
   engineStatus: string
   targetLabel: string
   nativeLabel: string
-  restartLabel?: string
   /** Small note under the Feed row. */
   feedNote?: string
+  /** The player's own language; the row is hidden without it. */
+  yourLanguage?: LanguageChoice
+  /** The language this channel is heard in; the row is hidden without it. */
+  channelLanguage?: LanguageChoice
   /** Opens the field training again; the row is hidden without it. */
   onTraining?: () => void
-  trainingLabel?: string
-  trainingAction?: string
+  labels?: Partial<SettingsLabels>
 }
 
 export function SettingsPanel({
@@ -173,55 +259,58 @@ export function SettingsPanel({
   engineStatus,
   targetLabel,
   nativeLabel,
-  restartLabel = 'Rejoin channel',
   feedNote,
+  yourLanguage,
+  channelLanguage,
   onTraining,
-  trainingLabel = 'Field training',
-  trainingAction = 'Start',
+  labels,
 }: SettingsPanelProps) {
+  const l = { ...defaultSettingsLabels, ...labels }
   const onOff = [
-    { value: 1, label: 'On' },
-    { value: 0, label: 'Off' },
+    { value: 1, label: l.on },
+    { value: 0, label: l.off },
   ]
   return (
-    <ScreenPanel title="Settings" onClose={onClose}>
+    <ScreenPanel title={l.title} onClose={onClose} closeLabel={l.close}>
       <div className="settings">
-        <Row label="Feed" note={feedNote}>
+        {yourLanguage && <LanguageRow label={l.yourLanguage} choice={yourLanguage} />}
+        {channelLanguage && <LanguageRow label={l.channelLanguage} choice={channelLanguage} />}
+        <Row label={l.feed} note={feedNote}>
           <Segmented
             value={s.feed}
             options={[
-              { value: 'live', label: 'Live' },
-              { value: 'drill', label: 'Drill' },
+              { value: 'live', label: l.live },
+              { value: 'drill', label: l.drill },
             ]}
             onChange={(v) => update('feed', v)}
           />
         </Row>
-        <Row label="Translation">
+        <Row label={l.translation}>
           <Segmented value={s.showTranslation ? 1 : 0} options={onOff} onChange={(v) => update('showTranslation', !!v)} />
         </Row>
-        <Row label="Word highlight">
+        <Row label={l.highlight}>
           <Segmented value={s.highlightWords ? 1 : 0} options={onOff} onChange={(v) => update('highlightWords', !!v)} />
         </Row>
-        <Row label="Speed">
+        <Row label={l.speed}>
           <Segmented
             value={s.speechRate}
             options={[0.8, 0.9, 1, 1.1].map((v) => ({ value: v, label: `${v}×` }))}
             onChange={(v) => update('speechRate', v)}
           />
         </Row>
-        <Row label="Static">
+        <Row label={l.static}>
           <Segmented
             value={s.staticLevel}
             options={[
-              { value: 0, label: 'Off' },
-              { value: 0.6, label: 'Low' },
-              { value: 1, label: 'Mid' },
-              { value: 1.6, label: 'High' },
+              { value: 0, label: l.staticLevels.off },
+              { value: 0.6, label: l.staticLevels.low },
+              { value: 1, label: l.staticLevels.mid },
+              { value: 1.6, label: l.staticLevels.high },
             ]}
             onChange={(v) => update('staticLevel', v)}
           />
         </Row>
-        <Row label="Volume">
+        <Row label={l.volume}>
           <input
             type="range"
             min={0}
@@ -229,31 +318,31 @@ export function SettingsPanel({
             step={0.05}
             value={s.volume}
             onChange={(e) => update('volume', Number(e.target.value))}
-            aria-label="Volume"
+            aria-label={l.volume}
           />
         </Row>
-        <Row label="Voice" note={engineStatus}>
+        <Row label={l.voice} note={engineStatus}>
           <Segmented
             value={s.voiceEngine}
             options={[
-              { value: 'auto', label: 'Auto' },
-              { value: 'elevenlabs', label: 'Eleven' },
-              { value: 'browser', label: 'Device' },
+              { value: 'auto', label: l.voices.auto },
+              { value: 'elevenlabs', label: l.voices.elevenlabs },
+              { value: 'browser', label: l.voices.device },
             ]}
             onChange={(v) => update('voiceEngine', v)}
           />
         </Row>
-        <Row label="Talk input">
+        <Row label={l.talkInput}>
           <Segmented
             value={s.inputMode}
             options={[
-              { value: 'voice', label: 'Voice' },
-              { value: 'keyboard', label: 'Keyboard' },
+              { value: 'voice', label: l.inputs.voice },
+              { value: 'keyboard', label: l.inputs.keyboard },
             ]}
             onChange={(v) => update('inputMode', v)}
           />
         </Row>
-        <Row label="Mic language">
+        <Row label={l.micLanguage}>
           <Segmented
             value={s.micLanguage}
             options={[
@@ -264,17 +353,37 @@ export function SettingsPanel({
           />
         </Row>
         {onTraining && (
-          <Row label={trainingLabel}>
+          <Row label={l.training}>
             <button type="button" className="chip" onClick={onTraining}>
-              {trainingAction}
+              {l.trainingAction}
             </button>
           </Row>
         )}
         <button type="button" className="settings__restart" onClick={onRestart}>
-          {restartLabel}
+          {l.restart}
         </button>
       </div>
     </ScreenPanel>
+  )
+}
+
+function LanguageRow({ label, choice }: { label: string; choice: LanguageChoice }) {
+  return (
+    <Row label={label} note={choice.note}>
+      <select
+        className="settings__select"
+        value={choice.value}
+        disabled={choice.disabled}
+        aria-label={label}
+        onChange={(e) => choice.onChange(e.target.value)}
+      >
+        {choice.options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </Row>
   )
 }
 

@@ -9,6 +9,7 @@ import {
   CHANNEL_TENSIONS,
   NATIVE_LANGUAGES,
   VOICE_POOL,
+  languageName,
   type ChannelAmbience,
   type ChannelBrief,
   type ChannelDisplay,
@@ -40,7 +41,6 @@ const TENSION_NOTES = {
   intense: 'intense. Danger, little time, and setbacks that hit hard; people stay professional under pressure.',
 } as const
 
-const languageName = (tag: string) => new Intl.DisplayNames(['en'], { type: 'language' }).of(tag.split('-')[0]) ?? tag
 const clip = (s: unknown, n: number) => (typeof s === 'string' ? s.trim().slice(0, n) : '')
 
 // ---- signing ----

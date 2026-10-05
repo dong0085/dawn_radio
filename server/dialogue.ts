@@ -12,6 +12,7 @@ import {
   type LogTone,
   PAUSE_TAGS,
 } from '../shared/api.ts'
+import { CHANNEL_LANGUAGES, NATIVE_LANGUAGES, languageName } from '../shared/channels.ts'
 import { stories, type StoryBible } from '../shared/stories.ts'
 import { verifyChannel, type ChannelEnv } from './channel.ts'
 import { json } from './http.ts'
@@ -39,16 +40,19 @@ const TONES: LogTone[] = ['active', 'ok', 'warn', 'alert', 'done']
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
 type Effort = (typeof EFFORTS)[number]
 
-const languageName = (tag: string) => new Intl.DisplayNames(['en'], { type: 'language' }).of(tag.split('-')[0]) ?? tag
-
-function systemPrompt(story: StoryBible) {
+/** notesLang: the language the story notes were written for, when the player tuned the channel to another one. */
+function systemPrompt(story: StoryBible, notesLang = story.targetLang) {
   const target = languageName(story.targetLang)
   const native = languageName(story.nativeLang)
   const [a, b] = story.parties
   return `You write a live radio drama for people learning ${target}. Two characters talk over walkie-talkies while a listener, the player, can break in on the channel at any time. Each request asks for the next ${LINES_PER_BATCH} radio transmissions of the story; always return exactly ${LINES_PER_BATCH} items in lines.
 
 # Language
-- Every transmission is in ${target} at CEFR ${story.level}: short sentences, common words, natural spoken radio style. Reuse key words across lines; repetition helps learners.
+- Every transmission is in ${target} at CEFR ${story.level}: short sentences, common words, natural spoken radio style. Reuse key words across lines; repetition helps learners.${
+    notesLang !== story.targetLang
+      ? `\n- The story notes below were first written for a ${languageName(notesLang)} channel, so their call signs, radio habits and examples are in ${languageName(notesLang)}. On air, always use natural ${target} equivalents.`
+      : ''
+  }
 - Split each transmission into segments of one sentence (or one short phrase). Give each segment a natural ${native} translation that keeps the meaning and tone, not word for word.
 - Keep transmissions short, like real radio: usually one or two short sentences, about 6 to 18 words in total. A longer transmission (up to 3 sentences) only when someone reports something important.
 - delivery: how the line is performed when it matters (urgent, whispers, out of breath, shouts, relieved, worried, tired, excited, calm, hesitant), or "" for a normal voice. Use it when the situation calls for it, not on every line.
@@ -277,6 +281,7 @@ function userPrompt(story: StoryBible, req: DialogueRequest) {
   parts.push(`Batch ${req.batchIndex + 1} (the story should end around batch ${story.targetBatches}).`)
   if (req.batchIndex === 0 && req.history.length === 0) {
     parts.push('This is the opening. Start mid-operation with a radio check, and set up the situation quickly.')
+    if (!req.log?.entries.length) parts.push('The field log is empty: set the objective and add the starting entries (both parties among them) in the opening transmissions.')
   }
   if (req.memory.summary) parts.push(`Story so far:\n${req.memory.summary}`)
   if (req.memory.facts.length) parts.push(`Facts:\n${req.memory.facts.map((f) => `- ${f}`).join('\n')}`)
@@ -292,11 +297,17 @@ function userPrompt(story: StoryBible, req: DialogueRequest) {
 }
 
 /** Validate and trim the client's request. The story is a built-in one or a channel this server signed. */
-async function readRequest(body: unknown, env: DialogueEnv): Promise<{ req: DialogueRequest; story: StoryBible } | null> {
+async function readRequest(body: unknown, env: DialogueEnv): Promise<{ req: DialogueRequest; story: StoryBible; notesLang: string } | null> {
   if (!body || typeof body !== 'object') return null
   const b = body as Record<string, unknown>
-  const story = typeof b.storyId === 'string' ? stories[b.storyId] : await verifyChannel(env, b.channel)
-  if (!story) return null
+  const signed = typeof b.storyId === 'string' ? stories[b.storyId] : await verifyChannel(env, b.channel)
+  if (!signed) return null
+  // The player can hear a channel in another language, and follow it in their own.
+  const story: StoryBible = {
+    ...signed,
+    targetLang: CHANNEL_LANGUAGES.find((l) => l.tag === b.targetLang)?.tag ?? signed.targetLang,
+    nativeLang: NATIVE_LANGUAGES.find((l) => l === b.nativeLang) ?? signed.nativeLang,
+  }
   const ids = new Set([...story.parties.map((p) => p.id), 'player'])
   const memory = (b.memory ?? {}) as Record<string, unknown>
   const history = Array.isArray(b.history) ? b.history : []
@@ -314,7 +325,7 @@ async function readRequest(body: unknown, env: DialogueEnv): Promise<{ req: Dial
     playerMessage: clip(b.playerMessage, LIMITS.playerChars).trim() || undefined,
     log: readLog(b.log),
   }
-  return { req, story }
+  return { req, story, notesLang: signed.targetLang }
 }
 
 /** Pulls each complete item out of a JSON array while the JSON is still being written. */
@@ -411,7 +422,7 @@ export async function handleDialogue(request: Request, env: DialogueEnv): Promis
     /* fall through */
   }
   if (!read) return json({ error: 'Invalid request' }, 400)
-  const { story, req: dialogue } = read
+  const { story, req: dialogue, notesLang } = read
   // A channel an admin took off the air gets no more lines.
   if (env.DB && !stories[story.id]) {
     const row = await env.DB.prepare('SELECT hidden FROM channels WHERE id = ?').bind(story.id).first<{ hidden: number }>()
@@ -447,7 +458,7 @@ export async function handleDialogue(request: Request, env: DialogueEnv): Promis
             ...(hasEffort ? { effort } : {}),
             format: { type: 'json_schema', schema: outputSchema(story) },
           },
-          system: systemPrompt(story),
+          system: systemPrompt(story, notesLang),
           messages: [{ role: 'user', content: userPrompt(story, dialogue) }],
         },
         { signal: request.signal },

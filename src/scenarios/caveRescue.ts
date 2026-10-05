@@ -55,19 +55,12 @@ export const caveRescue: ScriptedScenario = {
     player: { name: 'You', color: '#3dff9a' },
     log: {
       title: 'Field log',
-      nowTab: 'Now',
-      timelineTab: 'Timeline',
-      objectiveTitle: 'Objective',
       sections: [
         { id: 'who', title: 'Who' },
         { id: 'route', title: 'Route', layout: 'route' },
         { id: 'found', title: 'Found' },
         { id: 'hazards', title: 'Hazards' },
       ],
-      emptySection: 'Nothing yet',
-      emptyTimeline: 'No events logged yet.',
-      newLabel: 'New',
-      updatedNotice: 'Log updated',
       initial: {
         objective: t('Retrouver le spéléologue disparu', 'Find the missing caver'),
         entries: [

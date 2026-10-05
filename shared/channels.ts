@@ -17,8 +17,22 @@ export const CHANNEL_LANGUAGES = [
   { tag: 'ja-JP', name: 'Japanese' },
 ] as const
 
-/** Languages the player can follow along in. */
-export const NATIVE_LANGUAGES = ['en-US', ...CHANNEL_LANGUAGES.map((l) => l.tag)] as const
+/** Languages the player can follow along in: translations, word lookups and the radio's own wording. */
+export const NATIVE_LANGUAGES = ['en-US', 'zh-CN', 'zh-TW', 'yue-HK', ...CHANNEL_LANGUAGES.map((l) => l.tag)] as const
+
+/** English name of a language for the writers' instructions, e.g. "fr-FR" → "French". */
+export function languageName(tag: string) {
+  // "Chinese" alone leaves the script open.
+  if (tag === 'zh-TW') return 'Traditional Chinese'
+  if (tag.startsWith('zh')) return 'Simplified Chinese'
+  if (tag.startsWith('yue')) return 'written Cantonese (Traditional characters)'
+  const code = tag.split('-')[0]
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? tag
+  } catch {
+    return tag
+  }
+}
 
 export const CHANNEL_LEVELS = ['A1', 'A2', 'B1', 'B2'] as const
 export type ChannelLevel = (typeof CHANNEL_LEVELS)[number]

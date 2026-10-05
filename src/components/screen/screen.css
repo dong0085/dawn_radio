@@ -1433,7 +1433,8 @@ button.log-timeline__row:hover {
   box-shadow: 0 0 6px var(--accent);
 }
 
-.new-channel__select {
+.new-channel__select,
+.settings__select {
   height: 28px;
   padding: 0 8px;
   border-radius: 7px;
@@ -1441,6 +1442,9 @@ button.log-timeline__row:hover {
   background: rgba(0, 0, 0, 0.3);
   color: var(--text);
   font: 12px var(--font-ui);
+}
+.settings__select:disabled {
+  opacity: 0.5;
 }
 .new-channel__error {
   margin: 0;

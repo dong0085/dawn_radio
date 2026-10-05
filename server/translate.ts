@@ -17,10 +17,13 @@ interface TranslateBody {
 
 const MAX_CHARS = 1500
 
-/** DeepL wants EN-US/EN-GB and PT-PT/PT-BR for targets, plain codes elsewhere. */
+/** DeepL wants EN-US/EN-GB, PT-PT/PT-BR and ZH-HANS/ZH-HANT for targets, plain codes elsewhere. */
 function deeplTarget(tag: string) {
   const [lang, region] = tag.split('-')
   const l = lang.toUpperCase()
+  // Cantonese readers get Traditional Chinese, which DeepL handles well with context.
+  if (l === 'YUE') return 'ZH-HANT'
+  if (l === 'ZH') return ['TW', 'HK', 'MO'].includes(region?.toUpperCase() ?? '') ? 'ZH-HANT' : 'ZH-HANS'
   if (l === 'EN') return region?.toUpperCase() === 'GB' ? 'EN-GB' : 'EN-US'
   if (l === 'PT') return region?.toUpperCase() === 'PT' ? 'PT-PT' : 'PT-BR'
   return l
@@ -42,7 +45,7 @@ export async function handleTranslate(request: Request, env: TranslateEnv): Prom
     return json({ error: 'Invalid JSON' }, 400)
   }
   const texts = (Array.isArray(body.text) ? body.text : [body.text]).filter((t): t is string => typeof t === 'string' && !!t.trim())
-  if (!texts.length || !body.target || !/^[a-z]{2}(-[A-Za-z]{2})?$/.test(body.target)) {
+  if (!texts.length || !body.target || !/^[a-z]{2,3}(-[A-Za-z]{2})?$/.test(body.target)) {
     return json({ error: 'text and target are required' }, 400)
   }
   if (texts.join('').length > MAX_CHARS) return json({ error: 'Text too long' }, 400)
@@ -55,7 +58,8 @@ export async function handleTranslate(request: Request, env: TranslateEnv): Prom
     body: JSON.stringify({
       text: texts,
       target_lang: deeplTarget(body.target),
-      ...(body.source ? { source_lang: body.source.split('-')[0].toUpperCase() } : {}),
+      // DeepL reads Cantonese input as Chinese.
+      ...(body.source ? { source_lang: body.source.startsWith('yue') ? 'ZH' : body.source.split('-')[0].toUpperCase() } : {}),
       ...(body.context ? { context: String(body.context).slice(0, 500) } : {}),
     }),
   })

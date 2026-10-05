@@ -19,6 +19,7 @@ export interface TransmitViewProps {
   listeningText?: string
   processingText?: string
   placeholder?: string
+  sendLabel?: string
   onChange?: (text: string) => void
   onSubmit?: () => void
   onCancel?: () => void
@@ -34,6 +35,7 @@ export function TransmitView({
   listeningText = 'Listening…',
   processingText = 'Sending…',
   placeholder = 'Type your message…',
+  sendLabel = 'Send',
   onChange,
   onSubmit,
   onCancel,
@@ -69,7 +71,7 @@ export function TransmitView({
             enterKeyHint="send"
             autoComplete="off"
           />
-          <button type="submit" aria-label="Send" style={{ color }}>
+          <button type="submit" aria-label={sendLabel} style={{ color }}>
             <SendIcon size={18} />
           </button>
         </form>

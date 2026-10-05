@@ -11,6 +11,7 @@ export interface StoredChannel extends SignedChannel {
 
 const LIST_KEY = 'radio.channels.v1'
 const CURRENT_KEY = 'radio.channel.current'
+const LANGUAGES_KEY = 'radio.channel.languages.v1'
 
 export function loadChannels(): StoredChannel[] {
   try {
@@ -36,6 +37,24 @@ export function loadCurrentId(): string | null {
     return localStorage.getItem(CURRENT_KEY)
   } catch {
     return null
+  }
+}
+
+/** Language each channel is heard in, when the player switched it from the channel's own. */
+export function loadLanguages(): Record<string, string> {
+  try {
+    const map = JSON.parse(localStorage.getItem(LANGUAGES_KEY) ?? '{}') as unknown
+    return map && typeof map === 'object' && !Array.isArray(map) ? (map as Record<string, string>) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function saveLanguages(map: Record<string, string>) {
+  try {
+    localStorage.setItem(LANGUAGES_KEY, JSON.stringify(map))
+  } catch {
+    /* ignore */
   }
 }
 

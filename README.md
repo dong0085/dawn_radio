@@ -12,6 +12,7 @@
 - **You're on the channel.** Hold the talk key and speak (in French, English, or a mix). The characters answer you, take your ideas seriously, and quietly repeat your message back in correct French, the way radio operators confirm a call.
 - **Subtitles that follow the voice.** Every line shows French and English, and each word lights up as it's spoken, timed from ElevenLabs' character alignment.
 - **Tap any word** to pause and see what it means in that sentence (DeepL, using the full line as context).
+- **Your language, any channel language.** Pick the language you read in (English, Simplified or Traditional Chinese, Cantonese, and the channel languages) and the translations, word lookups, field log and the radio's own wording follow it. Any channel can also be heard in another language from Settings; each language keeps its own progress.
 - **A field log that keeps itself up to date.** People, places, finds and hazards change as the story reveals them, with a timeline of key moments.
 - **It sounds like a real radio.** A Web Audio chain adds a band-pass filter, distortion, hiss, squelch bursts and beeps. Each end of the channel has its own background (cave drips, control-room hum, rain), and weak signals crackle and drop out.
 - **New channels from a short briefing.** Describe a situation ("a ferry loses its radar in fog"), pick a language and level, and Claude writes a new channel: characters, call signs, events, endings, voices and a field log. Channels stay in the browser's memory; tune between them or delete them from the channel list.

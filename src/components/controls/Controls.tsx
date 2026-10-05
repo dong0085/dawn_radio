@@ -119,7 +119,7 @@ export interface ReplayGrilleProps {
 export function ReplayGrille({ onReplay, disabled, label = 'Repeat', slots = 6 }: ReplayGrilleProps) {
   return (
     <div className="hw-control">
-      <button type="button" className="grille" data-tour="replay" onClick={onReplay} disabled={disabled} aria-label={`${label} last line`}>
+      <button type="button" className="grille" data-tour="replay" onClick={onReplay} disabled={disabled} aria-label={label}>
         <span className="grille__slots" aria-hidden>
           {Array.from({ length: slots }, (_, i) => <span key={i} />)}
         </span>

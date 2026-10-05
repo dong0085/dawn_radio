@@ -20,6 +20,10 @@ import { AiSource } from './engine/sources/ai'
 import { AutoSource } from './engine/sources/auto'
 import { getConfig, translate } from './api'
 import { stories } from '../shared/stories.ts'
+import { CHANNEL_LANGUAGES, NATIVE_LANGUAGES } from '../shared/channels.ts'
+import { languageLabel, ownLanguageLabel } from './components/screen/format'
+import { uiText, type UiText } from './i18n'
+import type { TourStop } from './i18n/text'
 import { useConversation } from './engine/useConversation'
 import { useClock } from './hooks/useClock'
 import { useMediaQuery } from './hooks/useMediaQuery'
@@ -43,33 +47,36 @@ export interface AppProps {
   theme?: RadioTheme
   /** Photo skin for the device; null draws the device in CSS instead. */
   skin?: PhotoSkin | null
+  /** Language of the preset's recording (drill feed). Heard in any other language, the channel is always live. */
+  recordedIn?: string
+  /** The radio's own wording; defaults to the player's language. */
+  text?: UiText
 }
 
 type Overlay = 'log' | 'transcript' | 'settings' | 'channels' | 'new-channel'
 
-const languageName = (tag: string, displayIn: string) => {
-  try {
-    return new Intl.DisplayNames([displayIn], { type: 'language' }).of(tag.split('-')[0]) ?? tag
-  } catch {
-    return tag
-  }
-}
-
-export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels }: AppProps) {
+export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels, recordedIn, text }: AppProps) {
   const { scenario } = data
+  const t = text ?? uiText(scenario.nativeLang)
+  const targetName = languageLabel(scenario.targetLang, scenario.nativeLang)
+  const nativeName = languageLabel(scenario.nativeLang, scenario.nativeLang)
   const [settings, update] = useSettings()
+  const languages = { targetLang: scenario.targetLang, nativeLang: scenario.nativeLang }
+  /** The recording only exists in its own language. */
+  const drillHeard = !recordedIn || recordedIn === scenario.targetLang
   const { state, conversation, config } = useConversation({
     scenario,
     settings,
+    notices: t.notices,
     // Live feed: Claude writes the lines (when the server has a key); drill: the fixed recording.
     createSource: (getSettings) =>
       // A channel made from a briefing has no recording, so it is always live.
       'channel' in data
-        ? new AiSource({ channel: data.channel })
+        ? new AiSource({ channel: data.channel, ...languages })
         : new AutoSource(async () => {
             const config = await getConfig()
-            const live = getSettings().feed === 'live' && config.dialogue && !!stories[scenario.id]
-            return live ? new AiSource({ storyId: scenario.id }) : new ScriptedSource(data)
+            const live = (getSettings().feed === 'live' || !drillHeard) && config.dialogue && !!stories[scenario.id]
+            return live ? new AiSource({ storyId: scenario.id, ...languages }) : new ScriptedSource(data)
           }),
   })
   const clock = useClock()
@@ -196,7 +203,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onTranscript: () => toggle('transcript'),
     // Docked, the log is already open: L switches its tab instead.
     onChannels: () => channels && toggle('channels'),
-    onLog: () => (docked ? setLogTab((t) => (t === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
+    onLog: () => (docked ? setLogTab((tab) => (tab === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
     onEscape: () => (transmitting ? conversation.cancelTransmit() : wordCard ? closeWord() : setOverlay(null)),
   })
 
@@ -223,11 +230,15 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       return (
         <TransmitView
           key="tx"
-          label={`${scenario.player.name} · Transmitting`}
+          label={t.transmitting(scenario.player.name)}
           color={scenario.player.color}
           text={state.txText}
           mode={txMode ?? 'voice'}
           processing={activity === 'transcribing'}
+          listeningText={t.tx.listening}
+          processingText={t.tx.sending}
+          placeholder={t.tx.placeholder}
+          sendLabel={t.tx.send}
           onChange={(t) => conversation.setTxText(t)}
           onSubmit={() => void conversation.endTransmit()}
           onCancel={() => conversation.cancelTransmit()}
@@ -239,16 +250,16 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       return (
         <MessageView
           key="resume"
-          eyebrow={`${scenario.channel} · ${state.transcript.length} transmissions logged`}
-          title="Standby"
+          eyebrow={`${scenario.channel} · ${t.logged(state.transcript.length)}`}
+          title={t.standby}
           body={last ? `“${last.segments.map((x) => x.text).join(' ')}”` : scenario.premise}
           actions={
             <>
               <button type="button" className="chip" onClick={restart}>
-                Start fresh
+                {t.startFresh}
               </button>
               <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
-                Resume
+                {t.resume}
               </button>
             </>
           }
@@ -260,17 +271,17 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
         <MessageView
           key="standby"
           eyebrow={`${scenario.channel} · ${scenario.frequency}`}
-          title="Standby"
+          title={t.standby}
           body={scenario.premise}
           actions={
             <>
               {channels && (
                 <button type="button" className="chip" onClick={() => setOverlay('channels')}>
-                  Channels
+                  {t.channels}
                 </button>
               )}
               <button type="button" className="chip chip--primary" data-tour="join" onClick={() => conversation.start()}>
-                Join channel
+                {t.joinChannel}
               </button>
             </>
           }
@@ -281,17 +292,17 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       return (
         <MessageView
           key="ended"
-          eyebrow="Channel closed"
+          eyebrow={t.channelClosed}
           title={state.ending.title}
           tone={state.ending.outcome === 'success' ? 'var(--led-rx)' : state.ending.outcome === 'failure' ? 'var(--led-tx)' : undefined}
           body={state.ending.summary}
           actions={
             <>
               <button type="button" className="chip" onClick={() => setOverlay('transcript')}>
-                Transcript
+                {t.transcript}
               </button>
               <button type="button" className="chip chip--primary" onClick={restart}>
-                Rejoin channel
+                {t.rejoinChannel}
               </button>
             </>
           }
@@ -303,7 +314,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       return (
         <TransmitView
           key="sent"
-          label={`${scenario.player.name} · Awaiting reply`}
+          label={t.awaitingReply(scenario.player.name)}
           color={scenario.player.color}
           text={lastEntry.segments[0]?.text ?? ''}
           mode="voice"
@@ -323,27 +334,30 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           highlight={settings.highlightWords}
           color={speakerColor}
           lang={scenario.targetLang}
+          translationHint={t.translationHint}
           onRevealTranslation={() => setRevealedLine(current.line.id)}
           onWordTap={tapWord}
           selectedWord={wordCard?.lineId === current.line.id ? wordCard.index : undefined}
         />
       )
     }
-    return <MessageView key="tuning" eyebrow={scenario.channel} title="Tuning in…" />
+    return <MessageView key="tuning" eyebrow={scenario.channel} title={t.tuningIn} />
   })()
 
   const engineStatus =
-    state.engine === 'elevenlabs' ? 'ElevenLabs active' : settings.voiceEngine === 'browser' ? 'Device voice' : 'ElevenLabs not set up'
+    state.engine === 'elevenlabs' ? t.engine.elevenlabs : settings.voiceEngine === 'browser' ? t.engine.device : t.engine.missing
 
   const controls: DeviceControls = {
     paused: paused || phase === 'standby',
     onPauseToggle: () => conversation.togglePause(),
+    pauseLabel: t.pause,
+    resumeLabel: t.play,
     talk: {
       pressed: transmitting,
       mode: talkMode,
       lightColor: scenario.player.color,
-      label: talkMode === 'toggle' ? 'Tap to talk' : 'Hold to talk',
-      activeLabel: talkMode === 'toggle' ? 'Cancel' : 'Transmitting',
+      label: talkMode === 'toggle' ? t.talk.tap : t.talk.hold,
+      activeLabel: talkMode === 'toggle' ? t.talk.cancel : t.talk.transmitting,
       disabled: phase === 'ended',
       onPress: press,
       onRelease: release,
@@ -351,11 +365,14 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     replay: {
       onReplay: () => conversation.replay(),
       disabled: phase === 'standby' || transmitting,
+      label: t.repeat,
     },
   }
 
+  // The channel's own log wording first, then the radio's in the player's language.
+  const logConfig = scenario.log && { ...t.log, ...scenario.log }
   // The docked log shows its own changes, so the screen skips the "log updated" notice.
-  const notice = docked && state.notice === scenario.log?.updatedNotice ? null : state.notice
+  const notice = docked && state.notice === logConfig?.updatedNotice ? null : state.notice
   const toggleTranslation = () => update('showTranslation', !settings.showTranslation)
   const openLine = (lineId: string) => {
     setTranscriptFocus(lineId)
@@ -366,7 +383,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     <div className={`screen${phase !== 'standby' ? ' screen--booting' : ''}`} key={phase === 'standby' ? 'off' : 'on'}>
       <StatusBar
         onTitleClick={channels ? () => toggle('channels') : undefined}
-        titleLabel="Channels"
+        titleLabel={t.channels}
         incident={scenario.incident}
         title={scenario.title}
         channel={scenario.channel}
@@ -388,14 +405,14 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             : []),
           {
             id: 'transcript',
-            label: 'Transcript',
+            label: t.transcript,
             icon: <TranscriptIcon size={18} />,
             active: overlay === 'transcript',
             onClick: () => toggle('transcript'),
           },
           {
             id: 'settings',
-            label: 'Settings',
+            label: t.settings,
             icon: <GearIcon size={18} />,
             active: overlay === 'settings',
             onClick: () => toggle('settings'),
@@ -407,7 +424,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
         <PartyBar
           left={{ name: left.name, color: left.color, active: onAir === left.id }}
           right={{ name: right.name, color: right.color, active: onAir === right.id }}
-          center={<LiveIndicator mode={liveMode} />}
+          center={<LiveIndicator mode={liveMode} labels={t.live} />}
         />
         <div className="main-panel__content" data-tour="subtitles">
           <AnimatePresence mode="wait">{content}</AnimatePresence>
@@ -420,6 +437,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
                 translation={wordCard.translation}
                 note={wordCard.note}
                 lang={scenario.targetLang}
+                loadingText={t.word.loading}
+                closeLabel={t.word.close}
                 onClose={closeWord}
               />
             )}
@@ -447,12 +466,13 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             liveId={onAir && onAir !== PLAYER_ID ? current?.line.id : undefined}
             focusId={transcriptFocus}
             targetLang={scenario.targetLang}
+            labels={t.transcriptPanel}
           />
         )}
-        {overlay === 'log' && scenario.log && !docked && (
+        {overlay === 'log' && logConfig && !docked && (
           <LogPanel
             key="log"
-            config={scenario.log}
+            config={logConfig}
             log={state.log}
             tab={logTab}
             onTabChange={setLogTab}
@@ -478,6 +498,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             // The radio on this channel would save over a wipe, so it starts fresh instead.
             onClear={(id) => (id === channels.currentId ? restart() : channels.clear(id))}
             onClose={() => setOverlay(null)}
+            labels={t.channelsPanel}
           />
         )}
         {overlay === 'new-channel' && channels && (
@@ -488,6 +509,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onCreate={(brief, signal) => channels.create(brief, signal)}
             onBack={() => setOverlay('channels')}
             onClose={() => setOverlay(null)}
+            labels={t.channelsPanel}
           />
         )}
         {overlay === 'settings' && (
@@ -498,10 +520,36 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onClose={() => setOverlay(null)}
             onRestart={restart}
             engineStatus={engineStatus}
-            feedNote={config && !config.dialogue ? 'Live feed offline' : 'Applies when you rejoin'}
+            feedNote={
+              config && !config.dialogue
+                ? t.feedNote.offline
+                : !drillHeard && recordedIn
+                  ? t.feedNote.drillOnly(languageLabel(recordedIn, scenario.nativeLang))
+                  : t.feedNote.onRejoin
+            }
             onTraining={openTraining}
-            targetLabel={languageName(scenario.targetLang, scenario.nativeLang)}
-            nativeLabel={languageName(scenario.nativeLang, scenario.nativeLang)}
+            targetLabel={targetName}
+            nativeLabel={nativeName}
+            yourLanguage={{
+              value: scenario.nativeLang,
+              // Each language named in itself, so the player can find theirs whatever the radio shows now.
+              options: NATIVE_LANGUAGES.filter((l) => l !== scenario.targetLang).map((l) => ({ value: l, label: ownLanguageLabel(l) })),
+              onChange: (lang) => update('nativeLang', lang),
+            }}
+            channelLanguage={
+              channels && {
+                value: scenario.targetLang,
+                options: CHANNEL_LANGUAGES.filter((l) => l.tag !== scenario.nativeLang).map((l) => ({
+                  value: l.tag,
+                  label: languageLabel(l.tag, scenario.nativeLang),
+                })),
+                onChange: (lang) => channels.setLanguage(channels.currentId, lang),
+                // A preset without the live feed only has its recording, in one language.
+                disabled: !!recordedIn && !('channel' in data) && !config?.dialogue,
+                note: !!recordedIn && !('channel' in data) && config && !config.dialogue ? t.liveOnly : undefined,
+              }
+            }
+            labels={t.settingsPanel}
           />
         )}
       </AnimatePresence>
@@ -518,59 +566,24 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     controls,
   }
 
-  const targetName = languageName(scenario.targetLang, scenario.nativeLang)
-  const nativeName = languageName(scenario.nativeLang, scenario.nativeLang)
-  const trainingSteps: TrainingStep[] = [
-    {
-      target: null,
-      title: 'Welcome to the channel',
-      body: `This radio picks up a live channel. Two teams talk in ${targetName} as things happen. Listen in, and break in whenever you like.`,
-    },
-    {
-      target: 'subtitles',
-      title: 'Follow every word',
-      body: `Each transmission appears here word by word, with the ${nativeName} translation underneath. Tap any word to see what it means.`,
-    },
-    {
-      target: 'talk',
-      title: 'Break in',
-      body:
-        talkMode === 'toggle'
-          ? `Tap this key and type your message. Write in ${targetName}, ${nativeName} or a mix; the teams answer in ${targetName}.`
-          : `Hold this key and speak, then let go to send. Use ${targetName}, ${nativeName} or a mix; the teams answer in ${targetName}.`,
-      keys: [talkMode === 'toggle' ? 'Space' : 'Hold Space'],
-    },
-    {
-      target: 'pause',
-      title: 'Pause',
-      body: 'Stop the channel to catch your breath or reread a line. Press again to carry on.',
-      keys: ['P'],
-      shape: 'round',
-    },
-    {
-      target: 'replay',
-      title: 'Repeat',
-      body: 'Missed something? Tap the speaker grille to hear the last transmission again.',
-      keys: ['R'],
-    },
-    {
-      target: 'log',
-      title: scenario.log?.title ?? 'Field log',
-      body: 'People, places and events are tracked here as things change. A dot on the key means something new.',
-      keys: ['L'],
-    },
-    {
-      target: 'channels',
-      title: 'Channels',
-      body: 'Tap the channel name to switch channels, or set up your own from a short briefing.',
-      keys: ['C'],
-    },
-    {
-      target: 'join',
-      title: 'Ready?',
-      body: 'Join the channel when you are ready. You can run this training again from Settings.',
-    },
+  const tour = t.tour({ target: targetName, native: nativeName, talk: talkMode })
+  /** Where each stop points, and its keys. */
+  const stops: (Omit<TrainingStep, 'title' | 'body'> & { stop: TourStop })[] = [
+    { stop: 'welcome', target: null },
+    { stop: 'subtitles', target: 'subtitles' },
+    { stop: 'talk', target: 'talk', keys: [talkMode === 'toggle' ? 'Space' : 'Hold Space'] },
+    { stop: 'pause', target: 'pause', keys: ['P'], shape: 'round' },
+    { stop: 'replay', target: 'replay', keys: ['R'] },
+    { stop: 'log', target: 'log', keys: ['L'] },
+    { stop: 'channels', target: 'channels', keys: ['C'] },
+    { stop: 'ready', target: 'join' },
   ]
+  const trainingSteps: TrainingStep[] = stops.map(({ stop, ...step }) => ({
+    ...step,
+    ...tour[stop],
+    // The log goes by the channel's own name for it.
+    ...(stop === 'log' && scenario.log ? { title: scenario.log.title } : {}),
+  }))
 
   return (
     <div
@@ -588,10 +601,10 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       <div className="layout__device">
         {skin ? <PhotoDevice skin={skin} theme={theme} {...device} /> : <RadioDevice theme={theme} {...device} />}
       </div>
-      {docked && scenario.log && (
+      {docked && logConfig && (
         <DockedLog
           side={logSide}
-          config={scenario.log}
+          config={logConfig}
           log={state.log}
           tab={logTab}
           onTabChange={setLogTab}
@@ -606,8 +619,9 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           steps={trainingSteps}
           root={layoutRef}
           onFinish={finishTraining}
-          finishLabel={phase === 'standby' && !state.resumed ? 'Join channel' : undefined}
+          finishLabel={phase === 'standby' && !state.resumed ? t.joinChannel : undefined}
           showKeys={fineInput}
+          labels={t.training}
         />
       )}
     </div>

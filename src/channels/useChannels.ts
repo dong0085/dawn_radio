@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChannelBrief, SignedChannel } from '../../shared/channels.ts'
 import { createChannel } from '../api'
-import { clearSession, loadSession } from '../engine/session'
+import { clearChannelSessions, languageSessionId, loadSession } from '../engine/session'
 import { removeChannel } from '../sync'
 import type { Scenario } from '../types'
 import { channelLabel, nextChannelNumber } from './build'
-import { loadChannels, loadCurrentId, saveChannels, saveCurrentId, type StoredChannel } from './store'
+import { loadChannels, loadCurrentId, loadLanguages, saveChannels, saveCurrentId, saveLanguages, type StoredChannel } from './store'
 
 export type ChannelStatus =
   | { kind: 'new' }
@@ -19,6 +19,7 @@ export interface ChannelItem {
   /** e.g. CH-07 */
   label: string
   title: string
+  /** Language the channel is heard in now. */
   targetLang: string
   level: string
   /** Built into the radio; it can be cleared but not deleted. */
@@ -38,6 +39,12 @@ export interface ChannelsController {
   remove: (id: string) => void
   /** Wipes a channel's saved progress, keeping the channel. */
   clear: (id: string) => void
+  /** Language a channel is heard in now. */
+  languageOf: (id: string) => string
+  /** The channel's own language, as it was set up. */
+  ownLanguageOf: (id: string) => string
+  /** Hears a channel in another language. Each language keeps its own progress. */
+  setLanguage: (id: string, lang: string) => void
 }
 
 export interface Preset {
@@ -48,8 +55,8 @@ export interface Preset {
 
 const presetNumber = (s: Scenario) => Number(/\d+/.exec(s.channel)?.[0] ?? 1)
 
-function statusOf(id: string): ChannelStatus {
-  const saved = loadSession(id)
+function statusOf(session: string): ChannelStatus {
+  const saved = loadSession(session)
   if (!saved) return { kind: 'new' }
   const transmissions = saved.transcript.length
   return saved.phase === 'ended' ? { kind: 'ended', transmissions, outcome: saved.ending?.outcome } : { kind: 'running', transmissions }
@@ -58,6 +65,7 @@ function statusOf(id: string): ChannelStatus {
 /** The preset plus every channel the player made, and which one the radio is tuned to. */
 export function useChannels(preset: Preset) {
   const [list, setList] = useState(loadChannels)
+  const [languages, setLanguages] = useState(loadLanguages)
   const [currentId, setCurrentId] = useState(() => {
     const id = loadCurrentId()
     return id && (id === preset.scenario.id || list.some((c) => c.id === id)) ? id : preset.scenario.id
@@ -65,7 +73,7 @@ export function useChannels(preset: Preset) {
   // Progress to wipe once the old radio has unmounted, so it can't save over the wipe.
   const toClear = useRef<string[]>([])
   useEffect(() => {
-    toClear.current.splice(0).forEach(clearSession)
+    toClear.current.splice(0).forEach(clearChannelSessions)
   })
 
   const update = (next: StoredChannel[]) => {
@@ -76,6 +84,13 @@ export function useChannels(preset: Preset) {
     setCurrentId(id)
     saveCurrentId(id)
   }
+  const ownLanguageOf = (id: string) => list.find((c) => c.id === id)?.bible.targetLang ?? preset.scenario.targetLang
+  const languageOf = (id: string) => languages[id] ?? ownLanguageOf(id)
+  const status = (id: string) => statusOf(languageSessionId(id, languageOf(id), ownLanguageOf(id)))
+  const updateLanguages = (next: Record<string, string>) => {
+    setLanguages(next)
+    saveLanguages(next)
+  }
 
   const controller: ChannelsController = {
     currentId,
@@ -85,20 +100,20 @@ export function useChannels(preset: Preset) {
         number: presetNumber(preset.scenario),
         label: preset.scenario.channel,
         title: preset.scenario.title,
-        targetLang: preset.scenario.targetLang,
+        targetLang: languageOf(preset.scenario.id),
         level: preset.level,
         preset: true,
-        status: statusOf(preset.scenario.id),
+        status: status(preset.scenario.id),
       },
       ...list.map((c) => ({
         id: c.id,
         number: c.number,
         label: channelLabel(c.number),
         title: c.display.title,
-        targetLang: c.bible.targetLang,
+        targetLang: languageOf(c.id),
         level: c.bible.level,
         preset: false,
-        status: statusOf(c.id),
+        status: status(c.id),
       })),
     ],
     select,
@@ -117,13 +132,21 @@ export function useChannels(preset: Preset) {
       if (id === preset.scenario.id) return
       update(list.filter((c) => c.id !== id))
       removeChannel(id)
-      clearSession(id)
+      const { [id]: _, ...rest } = languages
+      updateLanguages(rest)
+      clearChannelSessions(id)
       toClear.current.push(id)
       if (id === currentId) select(preset.scenario.id)
     },
     clear: (id) => {
-      clearSession(id)
+      clearChannelSessions(id)
       toClear.current.push(id)
+    },
+    languageOf,
+    ownLanguageOf,
+    setLanguage: (id, lang) => {
+      const { [id]: _, ...rest } = languages
+      updateLanguages(lang === ownLanguageOf(id) ? rest : { ...rest, [id]: lang })
     },
   }
 
