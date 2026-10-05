@@ -76,6 +76,10 @@ flowchart LR
 - **Built to be reskinned.** The radio is drawn from rendered images with pixel positions in a config file, or entirely in CSS. Colors, fonts, party names, voices and the log layout all come from config, so a new story or look needs no component changes.
 - **Graceful fallbacks.** Each service is optional. `/api/config` reports what's set up, and the app picks the best available option for writing, voice and speech recognition.
 
+## What's next
+
+- **Better radio graphics with Blender.** The radio is drawn from flat images in `public/skins/nexus/`. A 3D model of the radio in Blender would make it easy to render matching images for every state (each key pressed, lights on and off) at any size, with the same lighting. The new renders drop into a new skin config in `src/skins/`, with no component changes.
+
 ## Run locally
 
 ```bash
