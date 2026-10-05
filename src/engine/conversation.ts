@@ -435,6 +435,7 @@ export class Conversation {
       log: s.log,
       ending: s.ending,
       source: this.opts.source.snapshot?.(this.queue.map((q) => q.line)),
+      nativeLang: this.opts.scenario.nativeLang,
     }
   }
 

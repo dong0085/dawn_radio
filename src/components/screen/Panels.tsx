@@ -351,16 +351,6 @@ const defaultSettingsLabels: SettingsLabels = {
   close: 'Close',
 }
 
-/** A language picker row: the current value and the choices, each named for the player. */
-export interface LanguageChoice {
-  value: string
-  options: { value: string; label: string }[]
-  onChange: (lang: string) => void
-  /** Small note under the label. */
-  note?: string
-  disabled?: boolean
-}
-
 export interface SettingsPanelProps {
   settings: Settings
   update: <K extends keyof Settings>(key: K, value: Settings[K]) => void
@@ -372,10 +362,8 @@ export interface SettingsPanelProps {
   nativeLabel: string
   /** Small note under the Feed row. */
   feedNote?: string
-  /** The player's own language; the row is hidden without it. */
-  yourLanguage?: LanguageChoice
-  /** The language this channel is heard in; the row is hidden without it. */
-  channelLanguage?: LanguageChoice
+  /** The channel's languages, named for the player; set when the channel was made, so shown read-only. Hidden without it. */
+  languages?: { yours: string; channel: string }
   /** Opens the field training again; the row is hidden without it. */
   onTraining?: () => void
   labels?: Partial<SettingsLabels>
@@ -390,8 +378,7 @@ export function SettingsPanel({
   targetLabel,
   nativeLabel,
   feedNote,
-  yourLanguage,
-  channelLanguage,
+  languages,
   onTraining,
   labels,
 }: SettingsPanelProps) {
@@ -403,8 +390,16 @@ export function SettingsPanel({
   return (
     <ScreenPanel title={l.title} onClose={onClose} closeLabel={l.close}>
       <div className="settings">
-        {yourLanguage && <LanguageRow label={l.yourLanguage} choice={yourLanguage} />}
-        {channelLanguage && <LanguageRow label={l.channelLanguage} choice={channelLanguage} />}
+        {languages && (
+          <>
+            <Row label={l.yourLanguage}>
+              <span className="settings__value">{languages.yours}</span>
+            </Row>
+            <Row label={l.channelLanguage}>
+              <span className="settings__value">{languages.channel}</span>
+            </Row>
+          </>
+        )}
         <Row label={l.feed} note={feedNote}>
           <Segmented
             value={s.feed}
@@ -498,26 +493,6 @@ export function SettingsPanel({
         </button>
       </div>
     </ScreenPanel>
-  )
-}
-
-function LanguageRow({ label, choice }: { label: string; choice: LanguageChoice }) {
-  return (
-    <Row label={label} note={choice.note}>
-      <select
-        className="settings__select"
-        value={choice.value}
-        disabled={choice.disabled}
-        aria-label={label}
-        onChange={(e) => choice.onChange(e.target.value)}
-      >
-        {choice.options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </Row>
   )
 }
 

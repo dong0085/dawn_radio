@@ -72,9 +72,7 @@ export interface DialogueRequest {
   /** Opening batch only: a narrator sets the scene and introduces both sides before the channel opens. */
   prelude?: boolean
   log?: LogSnapshot
-  /** Language the channel is heard in, when the player switched it from the story's own. */
-  targetLang?: string
-  /** The player's language for translations, when it differs from the story's. */
+  /** Built-in stories only: the player's language for translations, fixed when they join. */
   nativeLang?: string
 }
 

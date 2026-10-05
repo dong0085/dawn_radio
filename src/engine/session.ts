@@ -15,15 +15,14 @@ export interface SavedSession {
   ending: ScenarioEnding | null
   /** The line source's own state (story memory, script position). */
   source?: unknown
+  /** The player's language when the session started; it stays for the whole session. */
+  nativeLang?: string
 }
 
 const key = (scenarioId: string) => `radio.session.${scenarioId}`
 
-/** Where a scenario's progress is saved: each language a channel is heard in keeps its own. */
+/** Where a scenario's progress is saved. */
 export const sessionId = (scenario: Pick<Scenario, 'id' | 'session'>) => scenario.session ?? scenario.id
-
-/** Session id of a channel heard in `lang`; its own language keeps the plain id. */
-export const languageSessionId = (id: string, lang: string, ownLang: string) => (lang === ownLang ? id : `${id}@${lang}`)
 
 export function loadSession(scenarioId: string): SavedSession | null {
   try {
@@ -57,7 +56,7 @@ export function clearSession(scenarioId: string) {
   if (existed) dropSession(scenarioId)
 }
 
-/** Wipes a channel's progress in every language it was heard in. */
+/** Wipes a channel's progress, including sessions from when it could be heard in other languages ("id@lang"). */
 export function clearChannelSessions(id: string) {
   clearSession(id)
   try {

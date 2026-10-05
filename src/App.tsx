@@ -20,8 +20,7 @@ import { AiSource } from './engine/sources/ai'
 import { AutoSource } from './engine/sources/auto'
 import { getConfig, translate } from './api'
 import { stories } from '../shared/stories.ts'
-import { CHANNEL_LANGUAGES, NATIVE_LANGUAGES } from '../shared/channels.ts'
-import { formatElapsed, languageLabel, ownLanguageLabel } from './components/screen/format'
+import { formatElapsed, languageLabel } from './components/screen/format'
 import { RecordingsPanel } from './components/screen/RecordingsPanel'
 import { deleteRecording, listRecordings, saveRecording } from './recordings'
 import type { SavedSession } from './engine/session'
@@ -53,8 +52,6 @@ export interface AppProps {
   theme?: RadioTheme
   /** Photo skin for the device; null draws the device in CSS instead. */
   skin?: PhotoSkin | null
-  /** Language of the preset's recording (drill feed). Heard in any other language, the channel is always live. */
-  recordedIn?: string
   /** The radio's own wording; defaults to the player's language. */
   text?: UiText
   /** Plays a saved recording like a tape instead of the live channel. */
@@ -78,15 +75,13 @@ type Overlay = 'log' | 'transcript' | 'settings' | 'channels' | 'new-channel' | 
 /** A tape writes no new lines. */
 const silentSource: LineSource = { next: async () => ({ lines: [] }) }
 
-export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels, recordedIn, text, tape, onPlayRecording, onBackToLive }: AppProps) {
+export default function App({ data = caveRescue, theme = defaultTheme, skin = nexusSkin, channels, text, tape, onPlayRecording, onBackToLive }: AppProps) {
   const { scenario } = data
   const t = text ?? uiText(scenario.nativeLang)
   const targetName = languageLabel(scenario.targetLang, scenario.nativeLang)
   const nativeName = languageLabel(scenario.nativeLang, scenario.nativeLang)
   const [settings, update] = useSettings()
   const languages = { targetLang: scenario.targetLang, nativeLang: scenario.nativeLang }
-  /** The recording only exists in its own language. */
-  const drillHeard = !recordedIn || recordedIn === scenario.targetLang
   const { state, conversation, config } = useConversation({
     scenario,
     settings,
@@ -101,7 +96,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
         ? new AiSource({ channel: data.channel, ...languages })
         : new AutoSource(async () => {
             const config = await getConfig()
-            const live = (getSettings().feed === 'live' || !drillHeard) && config.dialogue && !!stories[scenario.id]
+            const live = getSettings().feed === 'live' && config.dialogue && !!stories[scenario.id]
             return live ? new AiSource({ storyId: scenario.id, ...languages }) : new ScriptedSource(data)
           }),
   })
@@ -651,7 +646,8 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             key="new-channel"
             targetLang={scenario.targetLang}
             nativeLang={scenario.nativeLang}
-            onCreate={(brief, signal) => channels.create(brief, signal)}
+            // The player's language becomes the default for the next channel too.
+            onCreate={(brief, signal) => channels.create(brief, signal).then(() => update('nativeLang', brief.nativeLang))}
             onBack={() => setOverlay('channels')}
             onClose={() => setOverlay(null)}
             labels={t.channelsPanel}
@@ -665,35 +661,12 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onClose={() => setOverlay(null)}
             onRestart={restart}
             engineStatus={engineStatus}
-            feedNote={
-              config && !config.dialogue
-                ? t.feedNote.offline
-                : !drillHeard && recordedIn
-                  ? t.feedNote.drillOnly(languageLabel(recordedIn, scenario.nativeLang))
-                  : t.feedNote.onRejoin
-            }
+            feedNote={config && !config.dialogue ? t.feedNote.offline : t.feedNote.onRejoin}
             onTraining={openTraining}
             targetLabel={targetName}
             nativeLabel={nativeName}
-            yourLanguage={{
-              value: scenario.nativeLang,
-              // Each language named in itself, so the player can find theirs whatever the radio shows now.
-              options: NATIVE_LANGUAGES.filter((l) => l !== scenario.targetLang).map((l) => ({ value: l, label: ownLanguageLabel(l) })),
-              onChange: (lang) => update('nativeLang', lang),
-            }}
-            channelLanguage={
-              channels && {
-                value: scenario.targetLang,
-                options: CHANNEL_LANGUAGES.filter((l) => l.tag !== scenario.nativeLang).map((l) => ({
-                  value: l.tag,
-                  label: languageLabel(l.tag, scenario.nativeLang),
-                })),
-                onChange: (lang) => channels.setLanguage(channels.currentId, lang),
-                // A preset without the live feed only has its recording, in one language.
-                disabled: !!recordedIn && !('channel' in data) && !config?.dialogue,
-                note: !!recordedIn && !('channel' in data) && config && !config.dialogue ? t.liveOnly : undefined,
-              }
-            }
+            // Set when the channel was made, so they only show here.
+            languages={{ yours: nativeName, channel: targetName }}
             labels={t.settingsPanel}
           />
         )}

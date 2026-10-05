@@ -55,9 +55,7 @@ export interface UiText {
   notices: ConversationNotices
   /** Which voice is in use, under the Voice setting. */
   engine: { elevenlabs: string; device: string; missing: string }
-  feedNote: { offline: string; onRejoin: string; drillOnly: (language: string) => string }
-  /** Note under Channel language when only the live feed can switch it. */
-  liveOnly: string
+  feedNote: { offline: string; onRejoin: string }
   word: { loading: string; close: string }
   tx: { listening: string; sending: string; placeholder: string; send: string }
   translationHint: string
@@ -116,8 +114,7 @@ export const en: UiText = {
     backupVoice: 'Voice service unavailable. Using backup voice.',
   },
   engine: { elevenlabs: 'ElevenLabs active', device: 'Device voice', missing: 'ElevenLabs not set up' },
-  feedNote: { offline: 'Live feed offline', onRejoin: 'Applies when you rejoin', drillOnly: (lang) => `Drill recording is in ${lang} only` },
-  liveOnly: 'Needs the live feed',
+  feedNote: { offline: 'Live feed offline', onRejoin: 'Applies when you rejoin' },
   word: { loading: 'Looking up…', close: 'Continue' },
   tx: { listening: 'Listening…', sending: 'Sending…', placeholder: 'Type your message…', send: 'Send' },
   translationHint: 'Tap to translate',
@@ -203,7 +200,8 @@ export const en: UiText = {
       { label: 'An expert they called in', role: 'An expert the team called in for advice.' },
       { label: 'Let them decide', role: '' },
     ],
-    language: 'Language',
+    language: 'Channel language',
+    yourLanguage: 'Your language',
     level: 'Level',
     levelNotes: { A1: 'First words', A2: 'Everyday', B1: 'Getting by', B2: 'Confident' },
     tension: 'Tension',

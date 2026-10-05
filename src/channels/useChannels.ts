@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChannelBrief, SignedChannel } from '../../shared/channels.ts'
 import { createChannel } from '../api'
-import { clearChannelSessions, languageSessionId, loadSession } from '../engine/session'
+import { clearChannelSessions, loadSession } from '../engine/session'
 import { removeChannel } from '../sync'
 import type { Scenario } from '../types'
 import { channelLabel, nextChannelNumber } from './build'
-import { loadChannels, loadCurrentId, loadLanguages, saveChannels, saveCurrentId, saveLanguages, type StoredChannel } from './store'
+import { loadChannels, loadCurrentId, saveChannels, saveCurrentId, type StoredChannel } from './store'
 
 export type ChannelStatus =
   | { kind: 'new' }
@@ -19,7 +19,7 @@ export interface ChannelItem {
   /** e.g. CH-07 */
   label: string
   title: string
-  /** Language the channel is heard in now. */
+  /** Language the channel is heard in, set when it was made. */
   targetLang: string
   level: string
   /** Built into the radio; it can be cleared but not deleted. */
@@ -41,12 +41,6 @@ export interface ChannelsController {
   remove: (id: string) => void
   /** Wipes a channel's saved progress, keeping the channel. */
   clear: (id: string) => void
-  /** Language a channel is heard in now. */
-  languageOf: (id: string) => string
-  /** The channel's own language, as it was set up. */
-  ownLanguageOf: (id: string) => string
-  /** Hears a channel in another language. Each language keeps its own progress. */
-  setLanguage: (id: string, lang: string) => void
 }
 
 export interface Preset {
@@ -67,7 +61,6 @@ function statusOf(session: string): ChannelStatus {
 /** The preset plus every channel the player made, and which one the radio is tuned to. */
 export function useChannels(preset: Preset) {
   const [list, setList] = useState(loadChannels)
-  const [languages, setLanguages] = useState(loadLanguages)
   const [currentId, setCurrentId] = useState(() => {
     const id = loadCurrentId()
     return id && (id === preset.scenario.id || list.some((c) => c.id === id)) ? id : preset.scenario.id
@@ -86,13 +79,6 @@ export function useChannels(preset: Preset) {
     setCurrentId(id)
     saveCurrentId(id)
   }
-  const ownLanguageOf = (id: string) => list.find((c) => c.id === id)?.bible.targetLang ?? preset.scenario.targetLang
-  const languageOf = (id: string) => languages[id] ?? ownLanguageOf(id)
-  const status = (id: string) => statusOf(languageSessionId(id, languageOf(id), ownLanguageOf(id)))
-  const updateLanguages = (next: Record<string, string>) => {
-    setLanguages(next)
-    saveLanguages(next)
-  }
 
   const controller: ChannelsController = {
     currentId,
@@ -102,20 +88,20 @@ export function useChannels(preset: Preset) {
         number: presetNumber(preset.scenario),
         label: preset.scenario.channel,
         title: preset.scenario.title,
-        targetLang: languageOf(preset.scenario.id),
+        targetLang: preset.scenario.targetLang,
         level: preset.level,
         preset: true,
-        status: status(preset.scenario.id),
+        status: statusOf(preset.scenario.id),
       },
       ...list.map((c) => ({
         id: c.id,
         number: c.number,
         label: channelLabel(c.number),
         title: c.display.title,
-        targetLang: languageOf(c.id),
+        targetLang: c.bible.targetLang,
         level: c.bible.level,
         preset: false,
-        status: status(c.id),
+        status: statusOf(c.id),
       })),
     ],
     find: (id) => list.find((c) => c.id === id),
@@ -135,8 +121,6 @@ export function useChannels(preset: Preset) {
       if (id === preset.scenario.id) return
       update(list.filter((c) => c.id !== id))
       removeChannel(id)
-      const { [id]: _, ...rest } = languages
-      updateLanguages(rest)
       clearChannelSessions(id)
       toClear.current.push(id)
       if (id === currentId) select(preset.scenario.id)
@@ -144,12 +128,6 @@ export function useChannels(preset: Preset) {
     clear: (id) => {
       clearChannelSessions(id)
       toClear.current.push(id)
-    },
-    languageOf,
-    ownLanguageOf,
-    setLanguage: (id, lang) => {
-      const { [id]: _, ...rest } = languages
-      updateLanguages(lang === ownLanguageOf(id) ? rest : { ...rest, [id]: lang })
     },
   }
 

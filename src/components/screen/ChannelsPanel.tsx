@@ -5,13 +5,14 @@ import {
   CHANNEL_LANGUAGES,
   CHANNEL_LEVELS,
   CHANNEL_TENSIONS,
+  NATIVE_LANGUAGES,
   type ChannelBrief,
   type ChannelLevel,
   type ChannelTension,
 } from '../../../shared/channels.ts'
 import { ApiError } from '../../api'
 import type { ChannelItem, ChannelStatus } from '../../channels/useChannels'
-import { languageLabel } from './format'
+import { languageLabel, ownLanguageLabel } from './format'
 import { ScreenPanel, Segmented } from './Panels'
 
 /** Every word the channel panels show. All of it is in-world radio wording. */
@@ -43,7 +44,10 @@ export interface ChannelsLabels {
   partPlaceholder: string
   /** Ready-made parts for the player. An empty `role` lets the channel decide. */
   parts: { label: string; role: string }[]
+  /** The language the channel is heard in. */
   language: string
+  /** The player's own language, for translations and the radio's wording. */
+  yourLanguage: string
   level: string
   levelNotes: Record<ChannelLevel, string>
   tension: string
@@ -102,7 +106,8 @@ const defaultChannelsLabels: ChannelsLabels = {
     { label: 'An expert they called in', role: 'An expert the team called in for advice.' },
     { label: 'Let them decide', role: '' },
   ],
-  language: 'Language',
+  language: 'Channel language',
+  yourLanguage: 'Your language',
   level: 'Level',
   levelNotes: { A1: 'First words', A2: 'Everyday', B1: 'Getting by', B2: 'Confident' },
   tension: 'Tension',
@@ -223,7 +228,7 @@ export function ChannelsPanel({ items, currentId, live, nativeLang, canCreate, o
 }
 
 export interface NewChannelPanelProps {
-  /** Language preselected in the form. */
+  /** Languages preselected in the form. Both are fixed once the channel is made. */
   targetLang: string
   nativeLang: string
   onCreate: (brief: ChannelBrief, signal: AbortSignal) => Promise<void>
@@ -243,13 +248,20 @@ const slide = {
  * (language, level, tension), then a summary to confirm. On success the radio tunes to the
  * new channel, which closes this panel.
  */
-export function NewChannelPanel({ targetLang, nativeLang, onCreate, onBack, onClose, labels }: NewChannelPanelProps) {
+export function NewChannelPanel({ targetLang, nativeLang: startNative, onCreate, onBack, onClose, labels }: NewChannelPanelProps) {
   const l = { ...defaultChannelsLabels, ...labels }
   const [step, setStep] = useState(0)
   const [dir, setDir] = useState(1)
   const [about, setAbout] = useState('')
   const [role, setRole] = useState('')
+  const [nativeLang, setNativeLang] = useState(startNative)
   const [lang, setLang] = useState<string>(() => CHANNEL_LANGUAGES.find((x) => x.tag === targetLang)?.tag ?? CHANNEL_LANGUAGES[0].tag)
+  const targets = CHANNEL_LANGUAGES.filter((x) => x.tag !== nativeLang)
+  const pickNative = (next: string) => {
+    setNativeLang(next)
+    // The channel can't be heard in the player's own language.
+    if (next === lang) setLang(CHANNEL_LANGUAGES.find((x) => x.tag !== next)!.tag)
+  }
   const [level, setLevel] = useState<ChannelLevel>('A2')
   const [tension, setTension] = useState<ChannelTension>('steady')
   const [busy, setBusy] = useState(false)
@@ -296,6 +308,7 @@ export function NewChannelPanel({ targetLang, nativeLang, onCreate, onBack, onCl
   const rows = [
     { step: 0, label: l.summary.situation, value: situation?.label ?? (about.trim() || l.surprise), note: situation?.about },
     { step: 1, label: l.summary.part, value: part?.label ?? role.trim() },
+    { step: 2, label: l.yourLanguage, value: ownLanguageLabel(nativeLang) },
     {
       step: 2,
       label: l.summary.signal,
@@ -375,9 +388,20 @@ export function NewChannelPanel({ targetLang, nativeLang, onCreate, onBack, onCl
       return (
         <div className="settings">
           <div className="settings__row">
+            <span className="settings__label">{l.yourLanguage}</span>
+            <select className="new-channel__select" value={nativeLang} aria-label={l.yourLanguage} onChange={(e) => pickNative(e.target.value)}>
+              {/* Each named in itself, so the player can find theirs whatever the radio shows now. */}
+              {NATIVE_LANGUAGES.map((x) => (
+                <option key={x} value={x}>
+                  {ownLanguageLabel(x)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings__row">
             <span className="settings__label">{l.language}</span>
-            <select className="new-channel__select" value={lang} onChange={(e) => setLang(e.target.value)}>
-              {CHANNEL_LANGUAGES.filter((x) => x.tag !== nativeLang).map((x) => (
+            <select className="new-channel__select" value={lang} aria-label={l.language} onChange={(e) => setLang(e.target.value)}>
+              {targets.map((x) => (
                 <option key={x.tag} value={x.tag}>
                   {languageLabel(x.tag, nativeLang)}
                 </option>
@@ -403,7 +427,7 @@ export function NewChannelPanel({ targetLang, nativeLang, onCreate, onBack, onCl
         <p className="wizard__prompt">{l.confirmPrompt}</p>
         <dl className="wizard__summary">
           {rows.map((r) => (
-            <div key={r.step} className="wizard__row">
+            <div key={r.label} className="wizard__row">
               <dt>{r.label}</dt>
               <dd>
                 <span>{r.value}</span>

@@ -18,7 +18,7 @@ export interface Settings {
   micLanguage: 'target' | 'native'
   /** live: lines written as you listen (needs the server) · drill: the fixed training recording. */
   feed: 'live' | 'drill'
-  /** The player's own language (BCP-47) for translations and the radio's wording. null: the browser's language. */
+  /** The player's language (BCP-47) for the next channel they start; each channel keeps its own. null: the browser's language. */
   nativeLang: string | null
   /** A narrator sets the scene before a channel opens. */
   prelude: boolean
