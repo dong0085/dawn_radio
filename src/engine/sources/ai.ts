@@ -54,7 +54,7 @@ export class AiSource implements LineSource {
     this.opts = { recentLines: 24, ...options }
   }
 
-  async next(request: BatchRequest, { onLine, signal }: NextOptions = {}): Promise<Batch> {
+  async next(request: BatchRequest, { onLine, onPlayer, signal }: NextOptions = {}): Promise<Batch> {
     const lines: Line[] = []
     const res = await streamDialogue(
       {
@@ -74,6 +74,7 @@ export class AiSource implements LineSource {
       },
       {
         signal,
+        onPlayer,
         onLine: (l) => {
           const line: Line = { ...l, id: `ai${++counter}`, signal: l.signal ? SIGNAL[l.signal] : undefined }
           lines.push(line)

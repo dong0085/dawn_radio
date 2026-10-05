@@ -23,6 +23,8 @@ export interface Batch {
 export interface NextOptions {
   /** Called as each line becomes available, before the whole batch is done. */
   onLine?: (line: Line) => void
+  /** Called with the writers' version of the player's message, before the lines that answer it. */
+  onPlayer?: (player: { target: string; native: string }) => void
   /** Aborted when the player cuts in and the batch is no longer wanted. */
   signal?: AbortSignal
 }

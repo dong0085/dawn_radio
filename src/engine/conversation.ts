@@ -166,8 +166,8 @@ export class Conversation {
   private recognizer: Transcriber | null = null
   private micStream: MediaStream | null = null
   private elevenLabsReady = false
-  /** Player line waiting for its target-language rendering from the next batch. */
-  private pendingPlayerId: string | null = null
+  /** Player lines already filled in by DeepL and by the writers. */
+  private rendered = { deepl: '', writers: '' }
   /** Seconds already spent on the channel before a reload. */
   private resumeElapsed = 0
   /** Latest player settings; read whenever needed. */
@@ -347,14 +347,13 @@ export class Conversation {
 
     this.addTranscript({ id: `p${Date.now()}`, speaker: PLAYER_ID, segments: [{ text, translation: '' }] })
     const playerId = this.state.transcript[this.state.transcript.length - 1].id
-    this.pendingPlayerId = playerId
     this.opts
       .translatePlayer?.(text)
-      ?.then((t) => this.applyPlayerRendering(t, playerId))
+      ?.then((t) => this.applyPlayerRendering(t, playerId, 'deepl'))
       .catch((err) => console.warn('[conversation] translation failed', err))
     // The player spoke, so the channel answers right away.
     this.set({ paused: false, txText: '', activity: 'waiting' })
-    this.requestBatch(text)
+    this.requestBatch(text, playerId)
   }
 
   cancelTransmit() {
@@ -524,7 +523,7 @@ export class Conversation {
     return item
   }
 
-  private requestBatch(playerMessage?: string) {
+  private requestBatch(playerMessage?: string, playerId?: string) {
     if (this.batchPending || (this.pendingEnding && !playerMessage)) return
     this.batchPending = true
     const epoch = this.epoch
@@ -547,6 +546,9 @@ export class Conversation {
         },
         {
           signal: abort.signal,
+          onPlayer: (player) => {
+            if (epoch === this.epoch && playerId) this.applyPlayerRendering(player, playerId, 'writers')
+          },
           onLine: (line) => {
             enqueue(line)
             if (this.playback) this.prepareAhead()
@@ -561,7 +563,7 @@ export class Conversation {
         }
         this.batchPending = false
         this.batchAbort = null
-        if (playerMessage && batch.player) this.applyPlayerRendering(batch.player)
+        if (playerId && batch.player) this.applyPlayerRendering(batch.player, playerId, 'writers')
         batch.lines.forEach(enqueue)
         if (batch.ending) this.pendingEnding = batch.ending
         this.advance()
@@ -763,15 +765,24 @@ export class Conversation {
     setAudioSession('playback')
   }
 
-  /** Adds the target-language version and translation to the player's last line. */
-  /** Fills in the player's line: target-language version + translation. The first answer wins. */
-  private applyPlayerRendering(player: { target: string; native: string }, id = this.pendingPlayerId) {
-    if (!id || id !== this.pendingPlayerId) return
-    this.pendingPlayerId = null
+  /**
+   * Fills in the player's line: target-language version + translation.
+   * The target-language version comes from the writers, because the reply confirms it in the same words;
+   * DeepL's shows until theirs arrives. The translation comes from DeepL, which detects a message already
+   * in the player's language; the writers' is used only without DeepL.
+   */
+  private applyPlayerRendering(player: { target: string; native: string }, id: string, from: 'deepl' | 'writers') {
+    this.rendered[from] = id
+    const takeTarget = from === 'writers' || this.rendered.writers !== id
+    const takeNative = from === 'deepl' || this.rendered.deepl !== id
     this.set({
       transcript: this.state.transcript.map((e) =>
         e.id === id
-          ? { ...e, rendering: player.target || undefined, segments: e.segments.map((seg) => ({ ...seg, translation: player.native })) }
+          ? {
+              ...e,
+              rendering: (takeTarget && player.target) || e.rendering,
+              segments: takeNative ? e.segments.map((seg) => ({ ...seg, translation: player.native })) : e.segments,
+            }
           : e,
       ),
     })

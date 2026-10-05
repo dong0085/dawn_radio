@@ -208,7 +208,10 @@ export function TranscriptView({ entries, parties, player, showTranslation, live
       <ol className="transcript">
         {entries.map((e) => {
           const p = who(e.speaker)
-          const translation = e.segments.map((s) => s.translation).filter(Boolean).join(' ')
+          const text = e.segments.map((s) => s.text).join(' ')
+          const joined = e.segments.map((s) => s.translation).filter(Boolean).join(' ')
+          // A player line spoken in the player's own language needs no translation.
+          const translation = sameText(joined, text) ? '' : joined
           // The player's own lines have no audio to play again.
           const playable = !!onPlayFrom && e.speaker !== PLAYER_ID
           return (
@@ -245,8 +248,8 @@ export function TranscriptView({ entries, parties, player, showTranslation, live
                   </button>
                 )}
               </div>
-              <p className="transcript__target">{e.segments.map((s) => s.text).join(' ')}</p>
-              {e.rendering && !sameText(e.rendering, e.segments.map((s) => s.text).join(' ')) && (
+              <p className="transcript__target">{text}</p>
+              {e.rendering && !sameText(e.rendering, text) && (
                 <p className="transcript__rendering" lang={targetLang}>
                   {e.rendering}
                 </p>

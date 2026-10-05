@@ -53,7 +53,11 @@ export function getConfig(): Promise<ApiConfig> {
  */
 export async function streamDialogue(
   body: DialogueRequest,
-  { onLine, signal }: { onLine: (line: DialogueLine) => void; signal?: AbortSignal },
+  {
+    onLine,
+    onPlayer,
+    signal,
+  }: { onLine: (line: DialogueLine) => void; onPlayer?: (player: { target: string; native: string }) => void; signal?: AbortSignal },
 ): Promise<DialogueDone> {
   const res = await apiFetch('/dialogue', {
     method: 'POST',
@@ -64,6 +68,7 @@ export async function streamDialogue(
   let done: DialogueDone | null = null
   await readNdjson<DialogueEvent>(res, (event) => {
     if (event.type === 'line') onLine(event.line)
+    else if (event.type === 'player') onPlayer?.(event.player)
     else if (event.type === 'done') done = event
     else throw new ApiError(event.status, event.error)
   })
@@ -90,10 +95,14 @@ export async function readNdjson<T>(res: Response, onEvent: (event: T) => void) 
   if (buf.trim()) onEvent(JSON.parse(buf) as T)
 }
 
-const translations = new Map<string, Promise<string[]>>()
+const translations = new Map<string, Promise<TranslateResponse['translations']>>()
 
-/** DeepL translation (cached). `context` helps translate a single word in its sentence. */
-export function translate(text: string[], target: string, opts: { source?: string; context?: string } = {}): Promise<string[]> {
+/** DeepL translation (cached), with the language DeepL read each text as. */
+export function translateDetect(
+  text: string[],
+  target: string,
+  opts: { source?: string; context?: string } = {},
+): Promise<TranslateResponse['translations']> {
   const key = JSON.stringify([text, target, opts.source, opts.context])
   let p = translations.get(key)
   if (!p) {
@@ -103,11 +112,16 @@ export function translate(text: string[], target: string, opts: { source?: strin
       body: JSON.stringify({ text, target, ...opts }),
     })
       .then((r) => r.json() as Promise<TranslateResponse>)
-      .then((d) => d.translations.map((t) => t.text))
+      .then((d) => d.translations)
     translations.set(key, p)
     p.catch(() => translations.delete(key))
   }
   return p
+}
+
+/** DeepL translation (cached). `context` helps translate a single word in its sentence. */
+export function translate(text: string[], target: string, opts: { source?: string; context?: string } = {}): Promise<string[]> {
+  return translateDetect(text, target, opts).then((t) => t.map((x) => x.text))
 }
 
 /** Has the server write and sign a new channel from a briefing. Takes 10 to 30 seconds. */

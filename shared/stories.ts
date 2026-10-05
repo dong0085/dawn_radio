@@ -98,7 +98,7 @@ export const caveRescueBible: StoryBible = {
   ],
   radioHabits: 'Use radio habits from French-speaking rescue services (call signs, "reçu", "à vous", "terminé") lightly, not on every line.',
   signalGuide: '"strong" (surface, near the entrance), "fair" (inside), "weak" (deep, behind rock, during bad moments)',
-  confirmExample: "Reçu : l'eau monte dans la deuxième galerie.",
+  confirmExample: "Reçu, la deuxième galerie.",
   targetBatches: 9,
   minBatches: 5,
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ApiConfig } from '../../shared/api.ts'
-import { getConfig, translate } from '../api'
+import { getConfig, translate, translateDetect } from '../api'
 import type { Settings } from '../settings'
 import { Conversation, type ConversationNotices } from './conversation'
 import { clearSession, loadSession, saveSession, sessionId } from './session'
@@ -53,11 +53,16 @@ export function useConversation({
       translatePlayer: (text) => {
         if (!cfg.current?.translate) return null
         const { targetLang, nativeLang } = scenario
-        // Naming the other language as the source handles mixed-language messages.
+        // Naming the player's language as the source handles mixed-language messages.
+        // For the other way, DeepL detects the language: a message already in the player's language needs no translation.
+        const base = (tag: string) => tag.split('-')[0].toLowerCase()
         return Promise.all([
           translate([text], targetLang, { source: nativeLang }),
-          translate([text], nativeLang, { source: targetLang }),
-        ]).then(([[target], [native]]) => ({ target, native }))
+          translateDetect([text], nativeLang),
+        ]).then(([[target], [native]]) => ({
+          target,
+          native: native.detected && base(native.detected) === base(nativeLang) ? '' : native.text,
+        }))
       },
       voices: {
         browser: new BrowserSpeech({ rate: () => get().speechRate, volume: () => get().volume }),

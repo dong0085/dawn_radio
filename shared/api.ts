@@ -103,6 +103,8 @@ export interface DialogueLine {
 /** /api/dialogue streams these, one JSON object per line of text. */
 export type DialogueEvent =
   | { type: 'line'; line: DialogueLine }
+  /** The player's message in the target language and in their own, sent before the lines that answer it. */
+  | { type: 'player'; player: { target: string; native: string } }
   | DialogueDone
   | { type: 'error'; error: string; status: number }
 

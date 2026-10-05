@@ -120,7 +120,7 @@ function systemPrompt(brief: ChannelBrief) {
 - beats: six to eight events the writers can draw on, in no fixed order. endings: three, one per outcome (success, failure, other), each saying when it happens.
 - radioHabits: one sentence on the radio habits of these services in ${target} (call signs, set phrases), to use lightly.
 - signalGuide: what "strong", "fair" and "weak" signal mean in this setting, as in: "strong" (at base), "fair" (on the move), "weak" (behind the ridge).
-- confirmExample: one short line in which an operator confirms a message back, in ${target}.
+- confirmExample: a few words in which an operator acknowledges a message by its key word, in ${target} ("received" plus two or three words).
 - log: the field log the player follows. title: what such a log is called here (e.g. "Flight log"). sections: three or four, each with a short id, a title, what it "holds", and layout "route" only for places reached in order (at most one such section), else "list". objective: the team's goal. entries: three to six starting entries (both parties among them, each with a short state), each with an id, a section id, a label, a state and a tone (active, ok, warn, alert, done).`
 }
 
