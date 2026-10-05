@@ -49,7 +49,8 @@ export function LightBar({ color, active, width = 96, className = '' }: LightBar
   return <span className={`light-bar${active ? ' is-on' : ''} ${className}`} style={{ width, '--light': color } as CSSProperties} />
 }
 
-export type LedState = 'rx' | 'tx' | 'busy' | 'off'
+/** `idle`: powered on, nothing on air. */
+export type LedState = 'rx' | 'tx' | 'busy' | 'idle' | 'off'
 
 export function Led({ state }: { state: LedState }) {
   return <span className={`led led--${state}`} />

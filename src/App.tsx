@@ -221,7 +221,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
               : 'live'
 
   const led: LedState =
-    phase !== 'running' ? 'off' : transmitting ? 'tx' : activity === 'waiting' && !paused ? 'busy' : 'rx'
+    phase !== 'running' ? 'idle' : transmitting ? 'tx' : activity === 'waiting' && !paused ? 'busy' : 'rx'
 
   const showTranslation = settings.showTranslation || revealedLine === current?.line.id
 
@@ -355,7 +355,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     talk: {
       pressed: transmitting,
       mode: talkMode,
-      lightColor: scenario.player.color,
+      lightColor: theme.lights.talk,
       label: talkMode === 'toggle' ? t.talk.tap : t.talk.hold,
       activeLabel: talkMode === 'toggle' ? t.talk.cancel : t.talk.transmitting,
       disabled: phase === 'ended',

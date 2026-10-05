@@ -36,8 +36,11 @@ function Label({ at, text, className = '' }: { at?: SkinLabel; text: string; cla
   )
 }
 
-function Light({ rect, color, on, className = '' }: { rect: Rect; color: string; on: boolean; className?: string }) {
-  return <span className={`photo-light${on ? ' is-on' : ''} ${className}`} style={{ ...box(rect), '--light': color } as CSSProperties} />
+/** `idle`: ready, glowing softly. `on`: fully lit. */
+type LightLevel = 'off' | 'idle' | 'on'
+
+function Light({ rect, color, level, className = '' }: { rect: Rect; color: string; level: LightLevel; className?: string }) {
+  return <span className={`photo-light is-${level} ${className}`} style={{ ...box(rect), '--light': color } as CSSProperties} />
 }
 
 /** The walkie-talkie drawn from a rendered photo, with live screen, lights and keys on top. */
@@ -59,6 +62,7 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
   const fade = `${(skin.edgeFade ?? 0) * 100}%`
   const pauseLabel = controls.paused ? (controls.resumeLabel ?? 'Resume') : (controls.pauseLabel ?? 'Pause')
   const pr = pause.radius
+  const talkLevel: LightLevel = talk.pressed ? 'on' : talk.disabled ? 'off' : 'idle'
 
   return (
     <div ref={stageRef} className={`stage stage--photo ${className}`} style={{ ...style, background: skin.backdrop }}>
@@ -106,10 +110,10 @@ export function PhotoDevice({ skin, theme, style, led, leftLight, rightLight, sc
         </div>
 
         {/* Lights */}
-        <Light rect={skin.sideLights.left} color={leftLight.color} on={leftLight.active} className="photo-light--side" />
-        <Light rect={skin.sideLights.right} color={rightLight.color} on={rightLight.active} className="photo-light--side" />
-        <Light rect={skin.talkLights.top} color={talk.lightColor} on={talk.pressed} className="photo-light--bar" />
-        <Light rect={skin.talkLights.bottom} color={talk.lightColor} on={talk.pressed} className="photo-light--bar" />
+        <Light rect={skin.sideLights.left} color={leftLight.color} level={leftLight.active ? 'on' : 'idle'} className="photo-light--side" />
+        <Light rect={skin.sideLights.right} color={rightLight.color} level={rightLight.active ? 'on' : 'idle'} className="photo-light--side" />
+        <Light rect={skin.talkLights.top} color={talk.lightColor} level={talkLevel} className="photo-light--bar" />
+        <Light rect={skin.talkLights.bottom} color={talk.lightColor} level={talkLevel} className="photo-light--bar" />
         <span className={`photo-led photo-led--${led}`} style={box(skin.led)} />
 
         {/* Printed labels */}

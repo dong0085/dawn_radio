@@ -28,6 +28,12 @@ export interface RadioTheme {
     accent: string
   }
   led: { rx: string; tx: string; off: string }
+  lights: {
+    /** Color of the light bars around the talk key. */
+    talk: string
+    /** Brightness (0–1) of a light that is ready but not lit up. */
+    idle: number
+  }
   /** Colors for log states: going well, needs attention, danger. */
   tone: { ok: string; warn: string; alert: string }
   fonts: { ui: string; subtitle: string }
@@ -65,6 +71,7 @@ export const defaultTheme: RadioTheme = {
     accent: '#6fe3d6',
   },
   led: { rx: '#2bff88', tx: '#ff4a3d', off: '#1d2b24' },
+  lights: { talk: '#ff9d2e', idle: 0.5 },
   tone: { ok: '#62e8a0', warn: '#ffc46b', alert: '#ff6b5e' },
   fonts: {
     ui: "'Saira', 'Rajdhani', system-ui, sans-serif",
@@ -95,6 +102,7 @@ export function themeVars(theme: RadioTheme, scenario: Scenario): CSSProperties 
     '--led-rx': theme.led.rx,
     '--led-tx': theme.led.tx,
     '--led-off': theme.led.off,
+    '--light-idle': theme.lights.idle,
     '--tone-ok': theme.tone.ok,
     '--tone-warn': theme.tone.warn,
     '--tone-alert': theme.tone.alert,
