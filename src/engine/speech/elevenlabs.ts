@@ -4,12 +4,13 @@ import type { Line, Party } from '../../types'
 import type { RadioAudio } from '../radioAudio'
 import { spokenText, wordsFromAlignment, type CharAlignment } from '../words'
 import { playStream, StreamedClip } from './stream'
+import { TimeStretch } from './stretch'
 import type { FinishReason, Playback, PreparedSpeech, SpeechProvider } from './types'
 
 export interface ElevenLabsOptions {
   /** API route (under /api) that holds the key and calls ElevenLabs. */
   endpoint?: string
-  /** Speaking speed (ElevenLabs accepts about 0.7–1.2). */
+  /** Playback speed. Applied in the browser, since newer models (v3, v4) ignore ElevenLabs' own speed setting. */
   speed?: () => number
   /** Voice used when a party has none set. */
   fallbackVoiceId?: string
@@ -48,14 +49,13 @@ export class ElevenLabsSpeech implements SpeechProvider {
   async prepare(line: Line, party: Party | undefined, lang: string): Promise<PreparedSpeech> {
     const text = spokenText(line.segments)
     const voiceId = party?.voice.elevenLabsVoiceId ?? this.opts.fallbackVoiceId ?? 'JBFqnCBsd6RMkjVDRZzb'
-    const speed = this.opts.speed?.() ?? 1
-    const key = `${voiceId}|${speed}|${line.delivery ?? ''}|${text}`
+    const key = `${voiceId}|${line.delivery ?? ''}|${text}`
 
-    if (this.opts.stream !== false) return this.prepareStream(key, line, voiceId, lang, speed)
+    if (this.opts.stream !== false) return this.prepareStream(key, line, voiceId, lang)
 
     let pending = this.cache.get(key)
     if (!pending) {
-      pending = this.fetchAudio(text, voiceId, lang, speed, line)
+      pending = this.fetchAudio(text, voiceId, lang, line)
       this.cache.set(key, pending)
       pending.catch(() => this.cache.delete(key))
     }
@@ -68,14 +68,16 @@ export class ElevenLabsSpeech implements SpeechProvider {
       words,
       duration: buffer.duration,
       filtered: true,
-      play: () => playBuffer(this.audio, buffer),
+      play: () => playBuffer(this.audio, buffer, this.speed()),
     }
   }
 
-  private async prepareStream(key: string, line: Line, voiceId: string, lang: string, speed: number): Promise<PreparedSpeech> {
+  private speed = () => this.opts.speed?.() ?? 1
+
+  private async prepareStream(key: string, line: Line, voiceId: string, lang: string): Promise<PreparedSpeech> {
     let entry = this.clips.get(key)
     if (!entry) {
-      entry = this.startStream(line, voiceId, lang, speed)
+      entry = this.startStream(line, voiceId, lang)
       this.clips.set(key, entry)
       entry.ready.catch(() => this.clips.delete(key))
     }
@@ -89,12 +91,12 @@ export class ElevenLabsSpeech implements SpeechProvider {
         return clip.duration
       },
       filtered: true,
-      play: () => playStream(audio, clip),
+      play: () => playStream(audio, clip, this.speed),
     }
   }
 
   /** Opens the voice stream; `ready` resolves once enough audio has arrived to start. */
-  private startStream(line: Line, voiceId: string, lang: string, speed: number) {
+  private startStream(line: Line, voiceId: string, lang: string) {
     const clip = new StreamedClip(line.segments, TTS_STREAM_SAMPLE_RATE)
     const preroll = this.opts.preroll ?? 0.3
     const ready = new Promise<void>((resolve, reject) => {
@@ -111,7 +113,7 @@ export class ElevenLabsSpeech implements SpeechProvider {
         const res = await apiFetch(`${this.opts.endpoint ?? '/tts'}/stream`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(this.body(line, voiceId, lang, speed)),
+          body: JSON.stringify(this.body(line, voiceId, lang)),
         })
         await readNdjson<StreamChunk>(res, (chunk) => {
           if (chunk.alignment) clip.pushAlignment(chunk.alignment)
@@ -126,15 +128,15 @@ export class ElevenLabsSpeech implements SpeechProvider {
     return { clip, ready }
   }
 
-  private body(line: Line, voiceId: string, lang: string, speed: number) {
-    return { text: spokenText(line.segments), voiceId, languageCode: lang.split('-')[0], speed, delivery: line.delivery }
+  private body(line: Line, voiceId: string, lang: string) {
+    return { text: spokenText(line.segments), voiceId, languageCode: lang.split('-')[0], delivery: line.delivery }
   }
 
-  private async fetchAudio(text: string, voiceId: string, lang: string, speed: number, line?: Line) {
+  private async fetchAudio(text: string, voiceId: string, lang: string, line?: Line) {
     const res = await apiFetch(this.opts.endpoint ?? '/tts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(line ? this.body(line, voiceId, lang, speed) : { text, voiceId, languageCode: lang.split('-')[0], speed }),
+      body: JSON.stringify(line ? this.body(line, voiceId, lang) : { text, voiceId, languageCode: lang.split('-')[0] }),
     })
     const data = (await res.json()) as TtsResponse
     const bytes = Uint8Array.from(atob(data.audio_base64), (c) => c.charCodeAt(0))
@@ -143,8 +145,10 @@ export class ElevenLabsSpeech implements SpeechProvider {
   }
 }
 
-function playBuffer(audio: RadioAudio, buffer: AudioBuffer): Playback {
+/** Plays a whole clip at `speed`; positions stay in seconds of the original clip. */
+function playBuffer(audio: RadioAudio, original: AudioBuffer, speed: number): Playback {
   const ctx = audio.context
+  const buffer = speed === 1 ? original : stretchBuffer(ctx, original, speed)
   let offset = 0
   let startedAt = 0
   let source: AudioBufferSourceNode | null = null
@@ -170,7 +174,9 @@ function playBuffer(audio: RadioAudio, buffer: AudioBuffer): Playback {
     source = src
   }
 
-  const position = () => (paused || !source ? offset : Math.min(buffer.duration, ctx.currentTime - startedAt))
+  /** Seconds into the stretched buffer. */
+  const played = () => (paused || !source ? offset : Math.min(buffer.duration, ctx.currentTime - startedAt))
+  const position = () => played() * speed
 
   start()
 
@@ -178,7 +184,7 @@ function playBuffer(audio: RadioAudio, buffer: AudioBuffer): Playback {
     position,
     pause() {
       if (paused || done) return
-      offset = position()
+      offset = played()
       paused = true
       const s = source
       source = null
@@ -198,4 +204,14 @@ function playBuffer(audio: RadioAudio, buffer: AudioBuffer): Playback {
     },
     finished,
   }
+}
+
+function stretchBuffer(ctx: BaseAudioContext, buffer: AudioBuffer, speed: number) {
+  const stretch = new TimeStretch(speed, buffer.sampleRate)
+  const head = stretch.push(buffer.getChannelData(0))
+  const tail = stretch.flush()
+  const out = ctx.createBuffer(1, head.length + tail.length, buffer.sampleRate)
+  out.copyToChannel(head as Float32Array<ArrayBuffer>, 0)
+  out.copyToChannel(tail as Float32Array<ArrayBuffer>, 0, head.length)
+  return out
 }

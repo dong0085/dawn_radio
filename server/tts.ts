@@ -5,7 +5,7 @@ import { json } from './http.ts'
  * Text-to-speech proxy. Keeps the ElevenLabs key on the server.
  *
  *   GET  /api/tts         -> { enabled: boolean }
- *   POST /api/tts         { text, voiceId, languageCode?, speed?, delivery? }  (text may hold [pause] tags)
+ *   POST /api/tts         { text, voiceId, languageCode?, delivery? }  (text may hold [pause] tags)
  *                         -> one JSON object: audio_base64 (mp3) + character alignment
  *   POST /api/tts/stream  same body
  *                         -> newline-delimited JSON chunks: audio_base64 (16-bit PCM) + alignment
@@ -24,7 +24,6 @@ interface TtsBody {
   text?: string
   voiceId?: string
   languageCode?: string
-  speed?: number
 }
 
 const MAX_CHARS = LIMITS.ttsChars
@@ -54,9 +53,6 @@ export async function handleTts(request: Request, env: TtsEnv, { stream = false 
   const payload: Record<string, unknown> = { text: tag + spoken, model_id: model }
   // Only some models accept a forced language.
   if (body.languageCode && /flash|turbo/.test(model)) payload.language_code = body.languageCode
-  if (body.speed && body.speed !== 1) {
-    payload.voice_settings = { speed: Math.min(1.2, Math.max(0.7, body.speed)) }
-  }
 
   const url = stream
     ? `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream/with-timestamps?output_format=pcm_${TTS_STREAM_SAMPLE_RATE}`

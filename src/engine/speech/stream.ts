@@ -1,6 +1,7 @@
 import type { Segment, TimedWord } from '../../types'
 import type { RadioAudio } from '../radioAudio'
 import { estimateWords, scaleTo, spansFromChars, tokenize, type CharAlignment } from '../words'
+import { TimeStretch } from './stretch'
 import type { FinishReason, Playback } from './types'
 
 /**
@@ -97,10 +98,15 @@ export class StreamedClip {
   }
 }
 
-/** Plays a clip through the radio, starting before it has fully arrived. */
-export function playStream(audio: RadioAudio, clip: StreamedClip): Playback {
+/**
+ * Plays a clip through the radio, starting before it has fully arrived.
+ * `speed` is read at each start and resume; positions stay in seconds of the original clip.
+ */
+export function playStream(audio: RadioAudio, clip: StreamedClip, speed: () => number = () => 1): Playback {
   const ctx = audio.context
   const rate = clip.sampleRate
+  let stretch = new TimeStretch(1, rate)
+  let flushed = false
   /** Seconds of the clip played before the current run started (after a resume). */
   let base = 0
   /** Context time at which `base` plays. */
@@ -128,30 +134,39 @@ export function playStream(audio: RadioAudio, clip: StreamedClip): Playback {
     finish(r)
   }
 
-  const position = () => (paused ? base : Math.max(base, Math.min(scheduledTo, base + ctx.currentTime - startedAt)))
+  const position = () =>
+    paused ? base : Math.max(base, Math.min(scheduledTo, base + (ctx.currentTime - startedAt) * stretch.rate))
+
+  const play = (data: Float32Array) => {
+    if (!data.length) return
+    // The stream fell behind playback: leave a short gap and shift the clock with it.
+    const earliest = ctx.currentTime + 0.03
+    if (nextTime < earliest) {
+      startedAt += earliest - nextTime
+      nextTime = earliest
+    }
+    const buffer = ctx.createBuffer(1, data.length, rate)
+    buffer.copyToChannel(data as Float32Array<ArrayBuffer>, 0)
+    const src = ctx.createBufferSource()
+    src.buffer = buffer
+    src.connect(audio.input)
+    src.start(nextTime)
+    sources.push(src)
+    nextTime += buffer.duration
+    scheduledTo += buffer.duration * stretch.rate
+  }
 
   const schedule = () => {
     if (paused || done) return
     while (next < clip.chunks.length) {
       const chunk = clip.chunks[next]
-      const data = nextOffset ? chunk.subarray(nextOffset) : chunk
-      // The stream fell behind playback: leave a short gap and shift the clock with it.
-      const earliest = ctx.currentTime + 0.03
-      if (nextTime < earliest) {
-        startedAt += earliest - nextTime
-        nextTime = earliest
-      }
-      const buffer = ctx.createBuffer(1, data.length, rate)
-      buffer.copyToChannel(data, 0)
-      const src = ctx.createBufferSource()
-      src.buffer = buffer
-      src.connect(audio.input)
-      src.start(nextTime)
-      sources.push(src)
-      nextTime += buffer.duration
-      scheduledTo += buffer.duration
+      play(stretch.push(nextOffset ? chunk.subarray(nextOffset) : chunk))
       next++
       nextOffset = 0
+    }
+    if (clip.done && !flushed) {
+      flushed = true
+      play(stretch.flush())
     }
     if (clip.done) {
       clearTimeout(endTimer)
@@ -170,6 +185,8 @@ export function playStream(audio: RadioAudio, clip: StreamedClip): Playback {
       next++
     }
     nextOffset = sample
+    stretch = new TimeStretch(speed(), rate)
+    flushed = false
     startedAt = ctx.currentTime + 0.03
     nextTime = startedAt
     schedule()
