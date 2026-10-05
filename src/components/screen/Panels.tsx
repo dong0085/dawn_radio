@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react
 import { motion } from 'motion/react'
 import { PLAYER_ID, type Party, type PlayerConfig, type TranscriptEntry } from '../../types'
 import type { Settings } from '../../settings'
+import { ChangelogRow } from '../../changelog/Changelog'
 import { ChevronIcon, CloseIcon, PlayIcon } from '../icons'
 import { formatElapsed } from './format'
 
@@ -481,6 +482,7 @@ export function SettingsPanel({
             </button>
           </Row>
         )}
+        <ChangelogRow />
         <button type="button" className="settings__restart" onClick={onRestart}>
           {l.restart}
         </button>

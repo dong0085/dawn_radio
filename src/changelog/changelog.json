@@ -1,0 +1,40 @@
+{
+  "repo": "https://github.com/dong0085/dawn_radio",
+  "languages": ["en-US", "zh-CN", "zh-TW"],
+  "releases": [
+    {
+      "version": "0.1.0",
+      "date": "2026-10-04",
+      "commit": "c1f9566b1c676f4306ee12e527e7436258fe764d",
+      "notes": {
+        "en-US": [
+          "Two crews talk on an open channel while you listen. Pause any time, then hold to talk and cut in.",
+          "Subtitles light up word by word, with a translation underneath. Tap a word to look it up.",
+          "Open new channels: pick a situation or describe your own, and choose your part on it.",
+          "Pick your own language and the channel's language in Settings.",
+          "On wide screens the log and transcript sit beside the radio. Play the channel again from any past line.",
+          "When you talk, the channel answers back in your words, corrected.",
+          "A new look for the radio, with orange talk lights and a soft glow while it waits."
+        ],
+        "zh-CN": [
+          "两组人员在公开频道上通话，你在一旁收听。随时可以暂停，按住通话键插话。",
+          "字幕逐词高亮，下方附有翻译。点一下单词即可查询。",
+          "开启新频道：选一个情境或自己描述一个，再选你在频道里的身份。",
+          "在设置里选择你的语言和频道的语言。",
+          "宽屏上，日志和通话记录会停靠在电台两侧。可以从任意一句重新播放频道。",
+          "你发言后，频道会用纠正后的原话简短确认。",
+          "电台换了新外观：橙色通话灯，待机时有柔和的微光。"
+        ],
+        "zh-TW": [
+          "兩組人員在公開頻道上通話，你在一旁收聽。隨時可以暫停，按住通話鍵插話。",
+          "字幕逐詞高亮，下方附有翻譯。點一下單詞即可查詢。",
+          "開啟新頻道：選一個情境或自己描述一個，再選你在頻道裡的身分。",
+          "在設定裡選擇你的語言和頻道的語言。",
+          "寬螢幕上，日誌和通話紀錄會停靠在電台兩側。可以從任意一句重新播放頻道。",
+          "你發言後，頻道會用修正後的原話簡短確認。",
+          "電台換了新外觀：橘色通話燈，待機時有柔和的微光。"
+        ]
+      }
+    }
+  ]
+}

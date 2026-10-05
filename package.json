@@ -1,12 +1,14 @@
 {
   "name": "dawn-radio",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/version.mjs check && tsc -b && vite build",
+    "changes": "node scripts/version.mjs changes",
+    "bump": "node scripts/version.mjs bump",
     "lint": "oxlint",
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler pages deploy",
