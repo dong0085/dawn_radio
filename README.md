@@ -190,6 +190,45 @@ New secret values take effect on the next deploy (a push, or **Retry deployment*
 
 `pnpm run deploy` uploads a build straight from your machine, for when you want to skip Git.
 
+## Run on your own server (Docker)
+
+The image holds the built site and the `/api` routes in one Node process (`server/node/main.ts`). The database is a SQLite file and the voice audio is a folder, both in `/data`. Mount a volume there so they survive updates.
+
+```bash
+cp .env.example .env               # fill in the keys
+docker compose up -d --build       # http://localhost:8080
+```
+
+Without Compose:
+
+```bash
+docker build -t dawn-radio .
+docker run -d -p 8080:8080 --env-file .env -v radio-data:/data --restart unless-stopped dawn-radio
+```
+
+| Setting | Meaning |
+| --- | --- |
+| `PORT` | Port to listen on (8080) |
+| `DATA_DIR` | Where the database and audio live (`/data` in the image) |
+| `CLIENT_IP_HEADER` | Where the visitor's address comes from, for rate limits: `cf-connecting-ip` behind Cloudflare's proxy, `x-forwarded-for` behind Caddy or nginx. Unset, the connection's own address is used |
+
+Put a reverse proxy in front for HTTPS (Caddy does it in two lines: `radio.example.com` and `reverse_proxy localhost:8080`). The microphone works only over HTTPS. `/healthz` answers `ok` while the server is up, and Docker's health check uses it.
+
+The server runs the migrations in `migrations/` at startup. Voice audio for each line is deleted after a day, and saved recordings keep their own copy.
+
+To run the same server without Docker: `pnpm build && pnpm start` (Node 24, keys from the environment).
+
+### Move data from Cloudflare
+
+Database: export D1, then load it into the server's empty database before its first start:
+
+```bash
+pnpm exec wrangler d1 export dawn-radio --remote --output d1.sql
+docker compose run --rm -v "$PWD/d1.sql:/d1.sql:ro" radio node server/node/import-d1.ts /d1.sql
+```
+
+Audio: only `saved/` (recordings people kept) matters, because `tmp/` is cleared daily anyway. Copy it with [rclone](https://rclone.org) using an R2 API token (Cloudflare dashboard → R2 → Manage API tokens) into the volume's `audio/saved/` folder.
+
 ## Project structure
 
 ```

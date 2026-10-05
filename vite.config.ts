@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import type { R2Bucket } from './server/audio.ts'
 import type { D1Database } from './server/db.ts'
+import { sendResponse, toRequest } from './server/node/bridge.ts'
 import { handleApi, type Env } from './server/router.ts'
 
 /**
@@ -31,34 +32,9 @@ function devApi(keys: Env): Plugin {
       })
       server.middlewares.use('/api', async (req, res) => {
         env ??= connect()
-        const chunks: Buffer[] = []
-        for await (const chunk of req) chunks.push(chunk as Buffer)
-        const headers = new Headers()
-        for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
-        const request = new Request(`http://localhost${req.originalUrl ?? '/api'}`, {
-          method: req.method,
-          headers,
-          body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks),
-        })
-        // Lets the route see when the browser gives up (e.g. the player cut in).
-        const abort = new AbortController()
-        res.on('close', () => !res.writableEnded && abort.abort())
-        const response = await handleApi(new Request(request, { signal: abort.signal }), await env)
-        res.statusCode = response.status
-        response.headers.forEach((v, k) => res.setHeader(k, v))
-        if (!response.body) return res.end()
-        // Pass streams through chunk by chunk (dialogue lines, voice audio).
-        const reader = response.body.getReader()
-        try {
-          for (;;) {
-            const { done, value } = await reader.read()
-            if (done) break
-            res.write(value)
-          }
-        } catch {
-          /* client went away */
-        }
-        res.end()
+        // The middleware strips /api from req.url; the routes expect it.
+        req.url = req.originalUrl ?? '/api'
+        await sendResponse(res, await handleApi(await toRequest(req, res, 'http://localhost'), await env))
       })
     },
   }

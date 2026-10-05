@@ -1,0 +1,17 @@
+# docker compose up -d --build
+# Keys go in .env (see .env.example). Data stays in the radio-data volume across updates.
+services:
+  radio:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      # Set to cf-connecting-ip behind Cloudflare's proxy, or x-forwarded-for behind Caddy or nginx.
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}
+    volumes:
+      - radio-data:/data
+
+volumes:
+  radio-data:

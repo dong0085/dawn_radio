@@ -27,3 +27,6 @@ dist-ssr
 .wrangler
 .dev.vars
 .env
+
+# Docker server data (SQLite database and voice audio)
+data
