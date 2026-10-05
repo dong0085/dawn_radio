@@ -126,6 +126,7 @@ Optional:
 | Field log | Screen icon | L |
 | Transcript | Screen icon | T |
 | Close / cancel | ✕ | Esc |
+| Field training | Settings → Field training | ← → to step, Esc to skip |
 
 Talk input records your voice and sends it to ElevenLabs Scribe. Without an ElevenLabs key, it uses the browser's speech recognition (Chrome, Edge, Safari). With Settings → Talk input → Keyboard, the key opens a text field instead.
 
@@ -200,5 +201,6 @@ docs/images/          README screenshots
 - **Photo skin (default):** the radio is drawn from rendered images in `public/skins/nexus/`. `src/skins/nexus.ts` holds the pixel positions of the screen, lights, keys and labels. For a new skin, add images and a new config with the same shape (`PhotoSkin`), then pass it as `<App skin={...} />`.
 - **CSS radio:** `<App skin={null} />` draws the radio entirely in CSS. Colors and fonts come from `theme` (`RadioTheme`).
 - **Live feed for a new story:** add a bible to `shared/stories.ts` with the same id as the story. The server only accepts known story ids, or a channel bible carrying its own signature.
+- **Field training:** the first-visit walkthrough lives in `components/training/FieldTraining.tsx`. Each step points at an element by its `data-tour` id (`talk`, `pause`, `replay`, `subtitles`, `log`, `channels`, `join`, `radio`); the step list, with its wording, is built in `App.tsx`. It opens once per browser and can be replayed from Settings.
 - **New channels:** `POST /api/channel` writes a bible from a briefing and signs it (HMAC). The browser keeps it and sends it back with each dialogue request; an edited bible fails the check. Languages, levels and the voice pool live in `shared/channels.ts`; panel wording is in `ChannelsPanel.tsx` (`labels` prop).
 - **Other line sources:** implement `LineSource` (`engine/sources/types.ts`) and return it from `createSource` in `App.tsx`.

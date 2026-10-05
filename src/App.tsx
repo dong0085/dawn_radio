@@ -1,4 +1,4 @@
-import { useCallback, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence } from 'motion/react'
 import { RadioDevice } from './components/device/RadioDevice'
 import { PhotoDevice } from './components/device/PhotoDevice'
@@ -12,6 +12,8 @@ import { LiveIndicator, PartyBar, StatusBar, type LiveMode } from './components/
 import { Subtitle } from './components/screen/Subtitle'
 import { MessageView, TransmitView, WordCard } from './components/screen/Views'
 import { Waveform } from './components/screen/Waveform'
+import { FieldTraining, type TrainingStep } from './components/training/FieldTraining'
+import { markTrainingSeen, trainingSeen } from './components/training/seen'
 import './components/screen/screen.css'
 import { ScriptedSource } from './engine/sources/scripted'
 import { AiSource } from './engine/sources/ai'
@@ -76,6 +78,11 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const [logTab, setLogTab] = useState<LogTab>('now')
   /** Transcript line to scroll to, when opened from the log. */
   const [transcriptFocus, setTranscriptFocus] = useState<string | undefined>()
+  const layoutRef = useRef<HTMLDivElement>(null)
+  const [training, setTraining] = useState(false)
+  /** The channel was playing when training opened, so it plays again after. */
+  const resumeAfterTraining = useRef(false)
+  const fineInput = useMediaQuery('(hover: hover) and (pointer: fine)')
 
   // With room beside the radio, the log sits there, always open, instead of inside the screen.
   const { logSide, dockFrom } = theme.layout
@@ -102,6 +109,30 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     setOverlay(null)
     setSeenVersion(0)
     conversation.restart()
+  }
+
+  // First visit: open the training once the radio is on screen. Returning listeners (with a saved session) skip it.
+  const firstVisit = useRef(!trainingSeen() && state.phase === 'standby' && !state.resumed)
+  useEffect(() => {
+    if (!firstVisit.current) return
+    const timer = setTimeout(() => setTraining(true), 700)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const openTraining = () => {
+    setOverlay(null)
+    setWordCard(null)
+    resumeAfterTraining.current = state.phase === 'running' && !state.paused
+    if (resumeAfterTraining.current) conversation.pause()
+    setTraining(true)
+  }
+  const finishTraining = (completed: boolean) => {
+    markTrainingSeen()
+    firstVisit.current = false
+    setTraining(false)
+    if (resumeAfterTraining.current) conversation.resume()
+    else if (completed && state.phase === 'standby') conversation.start()
+    resumeAfterTraining.current = false
   }
 
   const [left, right] = (['left', 'right'] as const).map((side) => scenario.parties.find((p) => p.side === side)!) as [Party, Party]
@@ -238,7 +269,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
                   Channels
                 </button>
               )}
-              <button type="button" className="chip chip--primary" onClick={() => conversation.start()}>
+              <button type="button" className="chip chip--primary" data-tour="join" onClick={() => conversation.start()}>
                 Join channel
               </button>
             </>
@@ -378,7 +409,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           right={{ name: right.name, color: right.color, active: onAir === right.id }}
           center={<LiveIndicator mode={liveMode} />}
         />
-        <div className="main-panel__content">
+        <div className="main-panel__content" data-tour="subtitles">
           <AnimatePresence mode="wait">{content}</AnimatePresence>
           {notice && !wordCard && <span className="notice">{notice}</span>}
           <AnimatePresence>
@@ -468,6 +499,7 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
             onRestart={restart}
             engineStatus={engineStatus}
             feedNote={config && !config.dialogue ? 'Live feed offline' : 'Applies when you rejoin'}
+            onTraining={openTraining}
             targetLabel={languageName(scenario.targetLang, scenario.nativeLang)}
             nativeLabel={languageName(scenario.nativeLang, scenario.nativeLang)}
           />
@@ -486,8 +518,63 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     controls,
   }
 
+  const targetName = languageName(scenario.targetLang, scenario.nativeLang)
+  const nativeName = languageName(scenario.nativeLang, scenario.nativeLang)
+  const trainingSteps: TrainingStep[] = [
+    {
+      target: null,
+      title: 'Welcome to the channel',
+      body: `This radio picks up a live channel. Two teams talk in ${targetName} as things happen. Listen in, and break in whenever you like.`,
+    },
+    {
+      target: 'subtitles',
+      title: 'Follow every word',
+      body: `Each transmission appears here word by word, with the ${nativeName} translation underneath. Tap any word to see what it means.`,
+    },
+    {
+      target: 'talk',
+      title: 'Break in',
+      body:
+        talkMode === 'toggle'
+          ? `Tap this key and type your message. Write in ${targetName}, ${nativeName} or a mix; the teams answer in ${targetName}.`
+          : `Hold this key and speak, then let go to send. Use ${targetName}, ${nativeName} or a mix; the teams answer in ${targetName}.`,
+      keys: [talkMode === 'toggle' ? 'Space' : 'Hold Space'],
+    },
+    {
+      target: 'pause',
+      title: 'Pause',
+      body: 'Stop the channel to catch your breath or reread a line. Press again to carry on.',
+      keys: ['P'],
+      shape: 'round',
+    },
+    {
+      target: 'replay',
+      title: 'Repeat',
+      body: 'Missed something? Tap the speaker grille to hear the last transmission again.',
+      keys: ['R'],
+    },
+    {
+      target: 'log',
+      title: scenario.log?.title ?? 'Field log',
+      body: 'People, places and events are tracked here as things change. A dot on the key means something new.',
+      keys: ['L'],
+    },
+    {
+      target: 'channels',
+      title: 'Channels',
+      body: 'Tap the channel name to switch channels, or set up your own from a short briefing.',
+      keys: ['C'],
+    },
+    {
+      target: 'join',
+      title: 'Ready?',
+      body: 'Join the channel when you are ready. You can run this training again from Settings.',
+    },
+  ]
+
   return (
     <div
+      ref={layoutRef}
       className={`layout${docked ? ` layout--dock-${logSide}` : ''}`}
       style={
         {
@@ -512,6 +599,15 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
           onToggleTranslation={toggleTranslation}
           onOpenLine={openLine}
           lang={scenario.targetLang}
+        />
+      )}
+      {training && (
+        <FieldTraining
+          steps={trainingSteps}
+          root={layoutRef}
+          onFinish={finishTraining}
+          finishLabel={phase === 'standby' && !state.resumed ? 'Join channel' : undefined}
+          showKeys={fineInput}
         />
       )}
     </div>

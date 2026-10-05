@@ -18,6 +18,7 @@ export function RadioDevice({ theme, style, led, leftLight, rightLight, screen, 
     <div ref={stageRef} className={`stage ${className}`} style={style}>
       <div
         className="device"
+        data-tour="radio"
         style={{ width: theme.designWidth, height: theme.designHeight, transform: `translate(-50%, -50%) scale(${scale})` }}
       >
         <div className="device__knobs" aria-hidden>

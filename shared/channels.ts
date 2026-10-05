@@ -23,6 +23,10 @@ export const NATIVE_LANGUAGES = ['en-US', ...CHANNEL_LANGUAGES.map((l) => l.tag)
 export const CHANNEL_LEVELS = ['A1', 'A2', 'B1', 'B2'] as const
 export type ChannelLevel = (typeof CHANNEL_LEVELS)[number]
 
+/** How much pressure the situation puts on the people on the channel. */
+export const CHANNEL_TENSIONS = ['calm', 'steady', 'intense'] as const
+export type ChannelTension = (typeof CHANNEL_TENSIONS)[number]
+
 /** Background sound at each end of the channel (generated in the browser). */
 export const CHANNEL_AMBIENCES = ['cave', 'room', 'rain', 'none'] as const
 export type ChannelAmbience = (typeof CHANNEL_AMBIENCES)[number]
@@ -49,6 +53,9 @@ export const VOICE_POOL = [
 export interface ChannelBrief {
   /** What's going on, in the player's words. May be empty: the writers then pick something. */
   about: string
+  /** Who the player is on the channel, in their words. Empty: the writers decide. */
+  role?: string
+  tension?: ChannelTension
   targetLang: string
   nativeLang: string
   level: ChannelLevel
@@ -93,4 +100,4 @@ export type ChannelRequest = ChannelBrief
 export type ChannelResponse = SignedChannel
 
 /** Limits the server enforces on a briefing. */
-export const BRIEF_LIMITS = { aboutChars: 300 }
+export const BRIEF_LIMITS = { aboutChars: 300, roleChars: 120 }

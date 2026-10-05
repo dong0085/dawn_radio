@@ -56,7 +56,7 @@ export interface DockedLogProps extends Omit<LogViewProps, 'since'> {
 /** The log as a panel beside the radio, always open. Entries from the latest update get the "new" tag. */
 export function DockedLog({ onToggleTranslation, side, ...view }: DockedLogProps) {
   return (
-    <aside className={`docked-log docked-log--${side}`} aria-label={view.config.title}>
+    <aside className={`docked-log docked-log--${side}`} data-tour="log" aria-label={view.config.title}>
       <header className="docked-log__head">
         <span className="screen-panel__title">{view.config.title}</span>
         <TranslationChip on={view.showTranslation} onClick={onToggleTranslation} />

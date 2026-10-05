@@ -51,11 +51,13 @@ export function StatusBar({
   return (
     <div className="status panel">
       {onTitleClick ? (
-        <button type="button" className="status__info status__info--key" onClick={onTitleClick} aria-label={titleLabel} title={titleLabel}>
+        <button type="button" className="status__info status__info--key" data-tour="channels" onClick={onTitleClick} aria-label={titleLabel} title={titleLabel}>
           {info}
         </button>
       ) : (
-        <div className="status__info">{info}</div>
+        <div className="status__info" data-tour="channels">
+          {info}
+        </div>
       )}
       <div className="status__meters">
         <SignalIcon size={14} bars={signal} />
@@ -68,6 +70,7 @@ export function StatusBar({
             key={a.id}
             type="button"
             className={`screen-key${a.active ? ' is-active' : ''}`}
+            data-tour={a.id}
             onClick={a.onClick}
             aria-label={a.label}
             aria-pressed={a.active}
