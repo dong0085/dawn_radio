@@ -29,6 +29,7 @@ import { useClock } from './hooks/useClock'
 import { useFitScale } from './hooks/useFitScale'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useShortcuts } from './hooks/useShortcuts'
+import { useStoredState } from './hooks/useStoredState'
 import { caveRescue } from './scenarios/caveRescue'
 import { useSettings } from './settings'
 import { defaultTheme, themeVars, type RadioTheme } from './theme'
@@ -99,13 +100,17 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
   const docked = useMediaQuery(`(min-width: ${dockFrom}px)`) && !!scenario.log
   const transcriptDocked = useMediaQuery(`(min-width: ${transcriptDockFrom}px)`)
   const transcriptSide = logSide === 'right' ? 'left' : 'right'
+  /** Which docked panels are unfolded. The transcript starts folded away. */
+  const [unfolded, setUnfolded] = useStoredState('radio.dock.v1', { transcript: false, log: true })
+  const toggleDock = (panel: keyof typeof unfolded) => setUnfolded({ ...unfolded, [panel]: !unfolded[panel] })
 
   const logVersion = state.log.version
   /** Log version the player has seen. Everything after it is new. */
   const [seenVersion, setSeenVersion] = useState(0)
-  // A docked log is always in view, so it is always seen.
-  if (docked && seenVersion !== logVersion) setSeenVersion(logVersion)
-  const logUnseen = !docked && overlay !== 'log' && logVersion > seenVersion
+  const logInView = docked ? unfolded.log : overlay === 'log'
+  // An open docked log is always in view, so it is always seen.
+  if (docked && unfolded.log && seenVersion !== logVersion) setSeenVersion(logVersion)
+  const logUnseen = !logInView && logVersion > seenVersion
 
   const setOverlay = (next: Overlay | null) => {
     // Leaving the log marks everything in it as seen.
@@ -205,10 +210,10 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
     onTalkUp: () => talkMode === 'hold' && void conversation.endTransmit(),
     onPause: () => conversation.togglePause(),
     onReplay: () => conversation.replay(),
-    onTranscript: () => !transcriptDocked && toggle('transcript'),
-    // Docked, the log is already open: L switches its tab instead.
+    // Docked panels fold and unfold instead.
+    onTranscript: () => (transcriptDocked ? toggleDock('transcript') : toggle('transcript')),
     onChannels: () => channels && toggle('channels'),
-    onLog: () => (docked ? setLogTab((tab) => (tab === 'now' ? 'timeline' : 'now')) : scenario.log && toggle('log')),
+    onLog: () => (docked ? toggleDock('log') : scenario.log && toggle('log')),
     onEscape: () => (transmitting ? conversation.cancelTransmit() : wordCard ? closeWord() : setOverlay(null)),
   })
 
@@ -380,12 +385,13 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
 
   // The channel's own log wording first, then the radio's in the player's language.
   const logConfig = scenario.log && { ...t.log, ...scenario.log }
-  // The docked log shows its own changes, so the screen skips the "log updated" notice.
-  const notice = docked && state.notice === logConfig?.updatedNotice ? null : state.notice
+  // An open docked log shows its own changes, so the screen skips the "log updated" notice.
+  const notice = docked && unfolded.log && state.notice === logConfig?.updatedNotice ? null : state.notice
   const toggleTranslation = () => update('showTranslation', !settings.showTranslation)
   const openLine = (lineId: string) => {
     setTranscriptFocus(lineId)
     if (!transcriptDocked) setOverlay('transcript')
+    else if (!unfolded.transcript) setUnfolded({ ...unfolded, transcript: true })
   }
   /** Plays the channel again from a past line; the in-screen transcript closes so the line shows. */
   const playFrom = (lineId: string) => {
@@ -628,10 +634,15 @@ export default function App({ data = caveRescue, theme = defaultTheme, skin = ne
       <div ref={deviceRef} className="layout__device">
         {skin ? <PhotoDevice skin={skin} theme={theme} scale={deviceScale} {...device} /> : <RadioDevice theme={theme} {...device} />}
       </div>
-      {transcriptDocked && <DockedTranscript side={transcriptSide} {...transcriptProps} />}
+      {transcriptDocked && (
+        <DockedTranscript side={transcriptSide} open={unfolded.transcript} onToggle={() => toggleDock('transcript')} {...transcriptProps} />
+      )}
       {docked && logConfig && (
         <DockedLog
           side={logSide}
+          open={unfolded.log}
+          onToggle={() => toggleDock('log')}
+          badge={logUnseen}
           config={logConfig}
           log={state.log}
           tab={logTab}

@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { LogConfig, LogEntry, LogSection, LogState, Segment } from '../../types'
 import { ChevronIcon } from '../icons'
 import { formatElapsed } from './format'
-import { DockPanel, ScreenPanel, Segmented } from './Panels'
+import { DockPanel, ScreenPanel, Segmented, type DockPanelProps } from './Panels'
 
 export type LogTab = 'now' | 'timeline'
 
@@ -49,17 +49,19 @@ export function LogPanel({ onToggleTranslation, onClose, seenVersion, ...view }:
   )
 }
 
-export interface DockedLogProps extends Omit<LogViewProps, 'since'> {
+export interface DockedLogProps extends Omit<LogViewProps, 'since'>, Pick<DockPanelProps, 'side' | 'open' | 'onToggle' | 'badge'> {
   onToggleTranslation: () => void
-  side: 'left' | 'right'
 }
 
-/** The log as a panel beside the radio, always open. Entries from the latest update get the "new" tag. */
-export function DockedLog({ onToggleTranslation, side, ...view }: DockedLogProps) {
+/** The log as a panel beside the radio, folded away or open. Entries from the latest update get the "new" tag. */
+export function DockedLog({ onToggleTranslation, side, open, onToggle, badge, ...view }: DockedLogProps) {
   return (
     <DockPanel
       title={view.config.title}
       side={side}
+      open={open}
+      onToggle={onToggle}
+      badge={badge}
       tour="log"
       headerExtra={<TranslationChip on={view.showTranslation} onClick={onToggleTranslation} label={view.config.translationLabel} />}
     >

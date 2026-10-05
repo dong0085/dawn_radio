@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { PLAYER_ID, type Party, type PlayerConfig, type TranscriptEntry } from '../../types'
 import type { Settings } from '../../settings'
-import { CloseIcon, PlayIcon } from '../icons'
+import { ChevronIcon, CloseIcon, PlayIcon } from '../icons'
 import { formatElapsed } from './format'
 
 export interface ScreenPanelProps {
@@ -39,22 +39,43 @@ export interface DockPanelProps {
   title: string
   /** Side of the radio the panel sits on. */
   side: 'left' | 'right'
+  /** Unfolded; folded, only the handle shows beside the radio. */
+  open: boolean
+  onToggle: () => void
+  /** Dot on the handle, e.g. for news while the panel is folded. */
+  badge?: boolean
   headerExtra?: ReactNode
   /** Field training stop that points at this panel. */
   tour?: string
   children: ReactNode
 }
 
-/** A panel beside the radio, always open, styled as a second display. */
-export function DockPanel({ title, side, headerExtra, tour, children }: DockPanelProps) {
+/**
+ * A panel beside the radio, styled as a second display. A tall handle on the edge facing the radio
+ * folds it away and brings it back, and stays in the same place either way.
+ */
+export function DockPanel({ title, side, open, onToggle, badge, headerExtra, tour, children }: DockPanelProps) {
+  const id = useId()
+  // The arrow points the way the panel will move.
+  const away = side === 'right' ? 'right' : 'left'
+  const toward = side === 'right' ? 'left' : 'right'
   return (
-    <aside className={`dock-panel dock-panel--${side}`} data-tour={tour} aria-label={title}>
-      <header className="dock-panel__head">
-        <span className="screen-panel__title">{title}</span>
-        {headerExtra}
-      </header>
-      <div className="dock-panel__body">{children}</div>
-    </aside>
+    <div className={`dock dock--${side}${open ? '' : ' is-folded'}`} data-tour={tour}>
+      <button type="button" className="dock__handle" aria-expanded={open} aria-controls={id} aria-label={title} onClick={onToggle}>
+        <ChevronIcon dir={open ? away : toward} size={14} />
+        <span className="dock__label">{title}</span>
+        {badge && <span className="dock__badge" aria-hidden />}
+      </button>
+      <div className="dock__drawer">
+        <aside id={id} className="dock-panel" aria-label={title} inert={!open}>
+          <header className="dock-panel__head">
+            <span className="screen-panel__title">{title}</span>
+            {headerExtra}
+          </header>
+          <div className="dock-panel__body">{children}</div>
+        </aside>
+      </div>
+    </div>
   )
 }
 
@@ -144,15 +165,13 @@ export function TranscriptPanel(props: TranscriptPanelProps) {
   )
 }
 
-export interface DockedTranscriptProps extends Omit<TranscriptPanelProps, 'onClose'> {
-  side: 'left' | 'right'
-}
+export interface DockedTranscriptProps extends Omit<TranscriptPanelProps, 'onClose'>, Pick<DockPanelProps, 'side' | 'open' | 'onToggle'> {}
 
-/** The transcript as a panel beside the radio, always open. */
-export function DockedTranscript({ side, ...props }: DockedTranscriptProps) {
+/** The transcript as a panel beside the radio, folded away or open. */
+export function DockedTranscript({ side, open, onToggle, ...props }: DockedTranscriptProps) {
   const l = { ...defaultTranscriptLabels, ...props.labels }
   return (
-    <DockPanel title={l.title} side={side} headerExtra={<TranscriptActions {...props} labels={l} />}>
+    <DockPanel title={l.title} side={side} open={open} onToggle={onToggle} headerExtra={<TranscriptActions {...props} labels={l} />}>
       <TranscriptView {...props} labels={l} />
     </DockPanel>
   )
