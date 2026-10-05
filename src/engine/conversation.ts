@@ -1,6 +1,6 @@
 import { NARRATOR_ID, PLAYER_ID, type Line, type LogState, type Party, type Scenario, type ScenarioEnding, type TimedWord, type TranscriptEntry } from '../types'
 import type { InputMode, Settings } from '../settings'
-import type { CarrierOptions, RadioAudio } from './radioAudio'
+import { setAudioSession, type CarrierOptions, type RadioAudio } from './radioAudio'
 import { applyLogUpdate, initialLog } from './log'
 import { ApiError } from '../api'
 import { recognitionSupported } from './recognizer'
@@ -959,13 +959,4 @@ export class Conversation {
       ),
     })
   }
-}
-
-/**
- * Safari's Audio Session API (iOS 16.4+). After the mic closes, 'playback' moves audio
- * back from the call channel to the normal media speaker and volume.
- */
-function setAudioSession(type: 'playback' | 'play-and-record') {
-  const session = (navigator as { audioSession?: { type: string } }).audioSession
-  if (session) session.type = type
 }

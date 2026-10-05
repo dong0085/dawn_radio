@@ -68,6 +68,7 @@ export class RadioAudio {
   /** Bumped on every carrier change, so late-loading ambience doesn't start after the line ended. */
   private carrierId = 0
   private volume = 1
+  private unwake = () => {}
 
   constructor(options: RadioAudioOptions = {}) {
     this.opts = { ...DEFAULTS, ...options }
@@ -76,7 +77,8 @@ export class RadioAudio {
   /** Create or wake the audio context. Call from a user gesture. */
   ensure(): AudioContext {
     if (!this.ctx) this.build()
-    if (this.ctx!.state === 'suspended') void this.ctx!.resume()
+    // iOS also leaves it 'interrupted' after a call, Siri or a locked screen.
+    if (this.ctx!.state !== 'running') void this.ctx!.resume().catch(() => undefined)
     return this.ctx!
   }
 
@@ -92,6 +94,7 @@ export class RadioAudio {
     this.ambienceSource = null
     this.ambienceCache.clear()
     this.detachMic()
+    this.unwake()
     const ctx = this.ctx
     this.ctx = null
     void ctx?.close().catch(() => undefined)
@@ -326,8 +329,16 @@ export class RadioAudio {
   }
 
   private build() {
+    // Plays like media, so the iPhone's silent switch leaves it on. Left alone, it is
+    // background sound until the mic opens once, and silent mode mutes it.
+    if (audioSessionType() === 'auto') setAudioSession('playback')
     const ctx = new AudioContext()
     this.ctx = ctx
+    // Safari can keep the context asleep after a gesture or an interruption; the next tap wakes it.
+    const wake = () => ctx.state !== 'running' && ctx.state !== 'closed' && void ctx.resume().catch(() => undefined)
+    const events = ['pointerdown', 'touchend', 'keydown'] as const
+    events.forEach((type) => document.addEventListener(type, wake, true))
+    this.unwake = () => events.forEach((type) => document.removeEventListener(type, wake, true))
     const o = this.opts
 
     this.master = ctx.createGain()
@@ -382,6 +393,19 @@ export class RadioAudio {
     noise.connect(noiseBand).connect(this.noiseGain).connect(this.master)
     noise.start()
   }
+}
+
+/**
+ * Safari's Audio Session API (iOS 16.4+). 'playback' uses the media speaker and volume, and
+ * ignores the silent switch. 'play-and-record' is the call channel, used while the mic is open.
+ */
+export function setAudioSession(type: 'playback' | 'play-and-record') {
+  const session = (navigator as { audioSession?: { type: string } }).audioSession
+  if (session) session.type = type
+}
+
+function audioSessionType() {
+  return (navigator as { audioSession?: { type: string } }).audioSession?.type
 }
 
 function biquad(ctx: AudioContext, type: BiquadFilterType, freq: number, q: number) {
